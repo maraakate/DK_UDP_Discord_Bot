@@ -3,6 +3,7 @@ using Discord.Net.Providers.WS4Net;
 using Discord.WebSocket;
 using System;
 using System.Collections.Generic;
+using System.Configuration;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -46,6 +47,9 @@ namespace DK_UDP_Bot
         static readonly string msAddr = "master.maraakate.org";
         static readonly byte[] serverQuery = { (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff',
             (byte)'s', (byte)'t', (byte)'a', (byte)'t', (byte)'u', (byte)'s', 0 };
+
+        string DiscordLoginToken = string.Empty;
+        ulong DiscordChannelId = 0;
 
         private void SendUdpMs(int srcPort)
         {
@@ -211,7 +215,7 @@ namespace DK_UDP_Bot
             }
         }
 
-        private void CleanUpDeadServers()
+        private void CleanUpDeadServers ()
         {
             try
             {
@@ -261,6 +265,20 @@ namespace DK_UDP_Bot
         {
             Console.WriteLine($"{_client.CurrentUser} is connected!");
 
+            string str = ConfigurationManager.AppSettings["DiscordReadyMessage"];
+            if (String.IsNullOrWhiteSpace(str))
+                return Task.CompletedTask;
+
+            string temp = ConfigurationManager.AppSettings["DiscordReadyChannelId"];
+            ulong id = 0;
+            if ((ulong.TryParse(temp, out id) == false) || (id == 0))
+            {
+                return Task.CompletedTask;
+            }
+
+            var chnl = _client.GetChannel(id) as IMessageChannel;
+            chnl.SendMessageAsync(str);
+
             return Task.CompletedTask;
         }
 
@@ -274,12 +292,33 @@ namespace DK_UDP_Bot
         {
         }
 
+        private void ReadConfig ()
+        {
+            DiscordLoginToken = ConfigurationManager.AppSettings["DiscordLoginToken"];
+            if (String.IsNullOrWhiteSpace(DiscordLoginToken))
+            {
+                throw new Exception("You must set DiscordLoginToken!");
+            }
+
+            string temp = ConfigurationManager.AppSettings["DiscordChannelId"];
+            if (String.IsNullOrWhiteSpace(temp))
+            {
+                throw new Exception("You must set DiscordChannelId!");
+            }
+            if (ulong.TryParse(temp, out DiscordChannelId) == false)
+            {
+                throw new Exception("Failed to convert DiscordChannelId to ulong!");
+            }
+        }
+
         public async Task MainAsync()
         {
             int intPort = 27192;
 
+            ReadConfig();
+
             // Tokens should be considered secret data, and never hard-coded.
-            await _client.LoginAsync(TokenType.Bot, "");
+            await _client.LoginAsync(TokenType.Bot, DiscordLoginToken);
             await _client.StartAsync();
             await _client.SetGameAsync("Daikatana");
 
