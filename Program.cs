@@ -1,4 +1,4 @@
-﻿using Discord;
+using Discord;
 using Discord.Net.Providers.WS4Net;
 using Discord.WebSocket;
 using System;
@@ -18,6 +18,7 @@ namespace DK_UDP_Bot
         public List<string> players = new List<string>();
         public int activeplayers = 0;
         public bool bAlertChanged = false;
+        public DateTime heartbeat = DateTime.UtcNow;
 
         public dkserver(string _ip, int _port)
         {
@@ -26,7 +27,7 @@ namespace DK_UDP_Bot
             Reset();
         }
 
-        private void Reset ()
+        private void Reset()
         {
             players.Clear();
             activeplayers = 0;
@@ -38,8 +39,76 @@ namespace DK_UDP_Bot
     {
         private readonly DiscordSocketClient _client;
         static List<dkserver> servers = new List<dkserver>();
+        static readonly byte[] msQuery = { (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff',
+            (byte)'g', (byte)'e', (byte)'t', (byte)'s', (byte)'e', (byte)'r', (byte)'v', (byte)'e', (byte)'r', (byte)'s', (byte)' ',
+            (byte)'d', (byte)'a', (byte)'i', (byte)'k', (byte)'a', (byte)'t', (byte)'a', (byte)'n', (byte)'a', 0};
+        static readonly int msPort = 27900;
+        static readonly string msAddr = "master.maraakate.org";
+        static readonly byte[] serverQuery = { (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff',
+            (byte)'s', (byte)'t', (byte)'a', (byte)'t', (byte)'u', (byte)'s', 0 };
 
-        private void SendUdp(ref dkserver server, int srcPort, string dstIp, int dstPort, byte[] data)
+        private void SendUdpMs(int srcPort)
+        {
+            using (UdpClient c = new UdpClient(srcPort))
+            {
+                byte[] datarecv = new byte[8192];
+                string dataconv;
+
+                c.Client.ReceiveTimeout = 1200;
+
+                IPEndPoint RemoteIpEndPoint = new IPEndPoint(IPAddress.Any, msPort);
+
+                c.Send(msQuery, msQuery.Length, msAddr, msPort);
+                datarecv = c.Receive(ref RemoteIpEndPoint);
+                if (datarecv[0] != '\xff' && datarecv[1] != '\xff' && datarecv[2] != '\xff' && datarecv[3] != '\xff' && datarecv.Length < 10)
+                {
+                    return;
+                }
+                dataconv = Encoding.ASCII.GetString(datarecv).Substring(4);
+                if (dataconv.StartsWith("servers ") == false)
+                {
+                    return;
+                }
+
+                const int ipLen = 4;
+                const int portLen = 2;
+                int readBytes = 12;
+                int totalLen = datarecv.Length;
+
+                while (true)
+                {
+                    if (readBytes >= totalLen)
+                        break;
+
+                    byte[] temp = new byte[4];
+                    Array.Copy(datarecv, readBytes, temp, 0, temp.Length);
+
+                    ushort port = BitConverter.ToUInt16(datarecv, readBytes + ipLen);
+                    ushort portx = (ushort)IPAddress.HostToNetworkOrder((short)port);
+                    portx += 10;
+
+                    IPAddress ip = new IPAddress(temp);
+                    string destAddress = ip.ToString();
+
+                    bool bAdd = true;
+                    foreach (dkserver server in servers)
+                    {
+                        if (server.ip == destAddress && server.port == portx)
+                        {
+                            bAdd = false;
+                            break;
+                        }
+                    }
+
+                    if (bAdd)
+                        servers.Add(new dkserver(destAddress, portx));
+
+                    readBytes += ipLen + portLen;
+                }
+            }
+        }
+
+        private void SendUdpServerStatus(ref dkserver server, int srcPort, string dstIp, int dstPort)
         {
             using (UdpClient c = new UdpClient(srcPort))
             {
@@ -51,7 +120,7 @@ namespace DK_UDP_Bot
 
                 IPEndPoint RemoteIpEndPoint = new IPEndPoint(IPAddress.Any, dstPort);
 
-                c.Send(data, data.Length, dstIp, dstPort);
+                c.Send(serverQuery, serverQuery.Length, dstIp, dstPort);
                 datarecv = c.Receive(ref RemoteIpEndPoint);
                 if (datarecv[0] != '\xff' && datarecv[1] != '\xff' && datarecv[2] != '\xff' && datarecv[3] != '\xff' && datarecv.Length < 10)
                 {
@@ -137,18 +206,30 @@ namespace DK_UDP_Bot
                     server.activeplayers = 0;
                     server.players.Clear();
                 }
+
+                server.heartbeat = DateTime.UtcNow;
             }
         }
 
-        static void InitServers ()
+        private void CleanUpDeadServers()
         {
-            for (int i = 27991; i < 28000; i++)
+            try
             {
-                servers.Add(new dkserver("maraakate.org", i));
+            start:
+                foreach (dkserver server in servers)
+                {
+                    var offset = DateTime.UtcNow - server.heartbeat;
+                    if (offset.Minutes >= 5)
+                    {
+                        servers.Remove(server);
+                        goto start;
+                    }
+                }
             }
+            catch
+            {
 
-            servers.Add(new dkserver("152.67.136.171", 27992));
-            servers.Add(new dkserver("dkserver.daikatananews.net", 27992));
+            }
         }
 
         // Discord.Net heavily utilizes TAP for async, so we create
@@ -195,31 +276,25 @@ namespace DK_UDP_Bot
 
         public async Task MainAsync()
         {
-            byte[] datatest = new byte[11];
-            datatest[0] = (byte)'\xff';
-            datatest[1] = (byte)'\xff';
-            datatest[2] = (byte)'\xff';
-            datatest[3] = (byte)'\xff';
-            datatest[4] = (byte)'s';
-            datatest[5] = (byte)'t';
-            datatest[6] = (byte)'a';
-            datatest[7] = (byte)'t';
-            datatest[8] = (byte)'u';
-            datatest[9] = (byte)'s';
-            datatest[10] = (byte)'\0';
-
             int intPort = 27192;
-
-            InitServers();
-
 
             // Tokens should be considered secret data, and never hard-coded.
             await _client.LoginAsync(TokenType.Bot, "");
             await _client.StartAsync();
+            await _client.SetGameAsync("Daikatana");
 
             // Block the program until it is closed.
             while (true)
             {
+                try
+                {
+                    SendUdpMs(intPort);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(ex.Message);
+                }
+
                 int size = servers.Count;
 
                 for (int i = 0; i < size; i++)
@@ -227,13 +302,14 @@ namespace DK_UDP_Bot
                     try
                     {
                         dkserver server = servers[i];
-                        SendUdp(ref server, intPort, server.ip, server.port, datatest);
+                        SendUdpServerStatus(ref server, intPort, server.ip, server.port);
                     }
                     catch
                     {
-
                     }
                 }
+
+                CleanUpDeadServers();
                 Thread.Sleep(1000 * 60);
             }
         }
