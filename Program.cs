@@ -55,7 +55,7 @@ namespace DK_UDP_Bot
         {
             using (UdpClient c = new UdpClient(srcPort))
             {
-                byte[] datarecv = new byte[8192];
+                byte[] datarecv;
                 string dataconv;
 
                 c.Client.ReceiveTimeout = 1200;
@@ -116,7 +116,7 @@ namespace DK_UDP_Bot
         {
             using (UdpClient c = new UdpClient(srcPort))
             {
-                byte[] datarecv = new byte[8192];
+                byte[] datarecv;
                 string dataconv;
                 string hostname;
 
@@ -191,8 +191,7 @@ namespace DK_UDP_Bot
                             {
                                 string str = String.Format("Player {0} joined the server \"{1}\" at {2}:{3}!\n", _players[i], hostname, dstIp, dstPort);
                                 Console.Write(str);
-                                ulong id = 949387590119862322;
-                                var chnl = _client.GetChannel(id) as IMessageChannel;
+                                var chnl = _client.GetChannel(DiscordChannelId) as IMessageChannel;
                                 chnl.SendMessageAsync(str);
                             }
                         }
@@ -223,7 +222,7 @@ namespace DK_UDP_Bot
                 foreach (dkserver server in servers)
                 {
                     var offset = DateTime.UtcNow - server.heartbeat;
-                    if (offset.Minutes >= 5)
+                    if (offset.TotalMinutes >= 5)
                     {
                         servers.Remove(server);
                         goto start;
