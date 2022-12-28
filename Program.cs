@@ -12,40 +12,16 @@ using System.Threading.Tasks;
 
 namespace DK_UDP_Bot
 {
-    class dkserver
+    public partial class Program
     {
-        public string ip = String.Empty;
-        public int port = 0;
-        public List<string> players = new List<string>();
-        public int activeplayers = 0;
-        public bool bAlertChanged = false;
-        public DateTime heartbeat = DateTime.UtcNow;
-
-        public dkserver(string _ip, int _port)
-        {
-            ip = _ip;
-            port = _port;
-            Reset();
-        }
-
-        private void Reset()
-        {
-            players.Clear();
-            activeplayers = 0;
-            bAlertChanged = false;
-        }
-    }
-
-    class Program
-    {
-        private readonly DiscordSocketClient _client;
-        static List<dkserver> servers = new List<dkserver>();
-        static readonly byte[] msQuery = { (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff',
+        readonly DiscordSocketClient _client;
+        List<dkserver> servers = new List<dkserver>();
+        readonly byte[] msQuery = { (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff',
             (byte)'g', (byte)'e', (byte)'t', (byte)'s', (byte)'e', (byte)'r', (byte)'v', (byte)'e', (byte)'r', (byte)'s', (byte)' ',
             (byte)'d', (byte)'a', (byte)'i', (byte)'k', (byte)'a', (byte)'t', (byte)'a', (byte)'n', (byte)'a', 0};
-        static readonly int msPort = 27900;
-        static readonly string msAddr = "master.maraakate.org";
-        static readonly byte[] serverQuery = { (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff',
+        readonly int msPort = 27900;
+        readonly string msAddr = "master.maraakate.org";
+        readonly byte[] serverQuery = { (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff',
             (byte)'s', (byte)'t', (byte)'a', (byte)'t', (byte)'u', (byte)'s', 0 };
 
         string DiscordLoginToken = string.Empty;
@@ -57,6 +33,8 @@ namespace DK_UDP_Bot
             {
                 byte[] datarecv;
                 string dataconv;
+                const int ipLen = 4;
+                const int portLen = 2;
 
                 c.Client.ReceiveTimeout = 1200;
 
@@ -68,14 +46,13 @@ namespace DK_UDP_Bot
                 {
                     return;
                 }
+
                 dataconv = Encoding.ASCII.GetString(datarecv).Substring(4);
                 if (dataconv.StartsWith("servers ") == false)
                 {
                     return;
                 }
 
-                const int ipLen = 4;
-                const int portLen = 2;
                 int readBytes = 12;
                 int totalLen = datarecv.Length;
 
@@ -130,6 +107,7 @@ namespace DK_UDP_Bot
                 {
                     return;
                 }
+
                 dataconv = Encoding.ASCII.GetString(datarecv).Substring(4);
                 if (dataconv.StartsWith("print\n") == false)
                 {
@@ -137,7 +115,6 @@ namespace DK_UDP_Bot
                 }
 
                 dataconv = dataconv.Substring(6);
-                //Console.WriteLine("{0}", dataconv);
                 hostname = dataconv.Substring(dataconv.IndexOf("\\hostname\\") + 10);
                 hostname = hostname.Substring(0, hostname.IndexOf("\\"));
 
@@ -162,7 +139,6 @@ namespace DK_UDP_Bot
                         string player = substr.Substring(pingLen + 1);
                         player = player.Substring(0, player.Length - 1);
 
-                        //Console.Write("Player {0} joined the server \"{1}\" at {2}:{3}!\n", player, hostname, dstIp, dstPort);
                         index = dataconv.IndexOf(substr) + substr.Length;
 
                         _playerCount++;
@@ -190,7 +166,6 @@ namespace DK_UDP_Bot
                             if (bFound == false)
                             {
                                 string str = String.Format("Player {0} joined the server \"{1}\" at {2}:{3}!\n", _players[i], hostname, dstIp, dstPort);
-                                Console.Write(str);
                                 var chnl = _client.GetChannel(DiscordChannelId) as IMessageChannel;
                                 chnl.SendMessageAsync(str);
                             }
@@ -244,12 +219,12 @@ namespace DK_UDP_Bot
         {
             // It is recommended to Dispose of a client when you are finished
             // using it, at the end of your app's lifetime.
-            _client = new DiscordSocketClient(new DiscordSocketConfig() { LogLevel = LogSeverity.Verbose, WebSocketProvider = WS4NetProvider.Instance });
+            _client = new DiscordSocketClient(new DiscordSocketConfig() { LogLevel = LogSeverity.Critical, WebSocketProvider = WS4NetProvider.Instance });
 
             _client.Log += LogAsync;
             _client.Ready += ReadyAsync;
-            _client.MessageReceived += MessageReceivedAsync;
-            _client.ReactionAdded += ReactionAddedAsync;
+            //_client.MessageReceived += MessageReceivedAsync;
+            //_client.ReactionAdded += ReactionAddedAsync;
         }
 
         private Task LogAsync(LogMessage log)
@@ -281,15 +256,15 @@ namespace DK_UDP_Bot
             return Task.CompletedTask;
         }
 
-        // This is not the recommended way to write a bot - consider
-        // reading over the Commands Framework sample.
-        private async Task MessageReceivedAsync(SocketMessage message)
-        {
-        }
+        //// This is not the recommended way to write a bot - consider
+        //// reading over the Commands Framework sample.
+        //private async Task MessageReceivedAsync(SocketMessage message)
+        //{
+        //}
 
-        public async Task ReactionAddedAsync(Cacheable<IUserMessage, ulong> arg1, Cacheable<IMessageChannel, ulong> arg2, SocketReaction arg3)
-        {
-        }
+        //public async Task ReactionAddedAsync(Cacheable<IUserMessage, ulong> arg1, Cacheable<IMessageChannel, ulong> arg2, SocketReaction arg3)
+        //{
+        //}
 
         private void ReadConfig ()
         {
@@ -314,6 +289,9 @@ namespace DK_UDP_Bot
         {
             int intPort = 27192;
 
+            _handler += new EventHandler(Handler);
+            SetConsoleCtrlHandler(_handler, true);
+
             ReadConfig();
 
             // Tokens should be considered secret data, and never hard-coded.
@@ -322,7 +300,7 @@ namespace DK_UDP_Bot
             await _client.SetGameAsync("Daikatana");
 
             // Block the program until it is closed.
-            while (true)
+            while (!exitSystem)
             {
                 try
                 {
