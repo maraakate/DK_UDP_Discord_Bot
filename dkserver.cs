@@ -7,10 +7,11 @@ namespace DK_UDP_Bot
     {
         public string ip = String.Empty;
         public int port = 0;
-        public List<string> players = new List<string>();
+        public List<dkplayer> players = new List<dkplayer>();
         public int activeplayers = 0;
         public bool bAlertChanged = false;
         public DateTime heartbeat = DateTime.UtcNow;
+        public Dictionary<string, string> serverParams = new Dictionary<string, string>();
 
         public dkserver(string _ip, int _port)
         {
@@ -22,6 +23,7 @@ namespace DK_UDP_Bot
         private void Reset()
         {
             players.Clear();
+            serverParams.Clear();
             activeplayers = 0;
             bAlertChanged = false;
         }

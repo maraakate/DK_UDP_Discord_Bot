@@ -95,7 +95,6 @@ namespace DK_UDP_Bot
             {
                 byte[] datarecv;
                 string dataconv;
-                string hostname;
 
                 c.Client.ReceiveTimeout = 1200;
 
@@ -115,14 +114,39 @@ namespace DK_UDP_Bot
                 }
 
                 dataconv = dataconv.Substring(6);
-                hostname = dataconv.Substring(dataconv.IndexOf("\\hostname\\") + 10);
-                hostname = hostname.Substring(0, hostname.IndexOf("\\"));
+
+                Dictionary<string, string> _serverParams = new Dictionary<string, string>();
+                var dict = dataconv.Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries);
+                int totalLen = dict.Length;
+                for (int x = 0; x < totalLen; x += 2)
+                {
+                    if (x + 1 > totalLen)
+                        break;
+
+                    if (dict[x + 1].Contains("\n"))
+                    {
+                        int trim = dict[x + 1].IndexOf('\n');
+                        string tempVal = dict[x + 1].Substring(0, trim);
+                        if (!_serverParams.ContainsKey(dict[x]))
+                        {
+                            _serverParams.Add(dict[x], tempVal);
+                        }
+                        break;
+                    }
+
+                    if (!_serverParams.ContainsKey(dict[x])) /* FS: Older versions of DK 1.3 stupidly sent hostname and maxclients twice. */
+                    {
+                        _serverParams.Add(dict[x], dict[x + 1]);
+                    }
+                }
+
+                server.serverParams = _serverParams;
 
                 if (dataconv.Contains('\n'))
                 {
                     int index = dataconv.IndexOf('\n') + 1;
                     int _playerCount = 0;
-                    List<string> _players = new List<string>();
+                    List<dkplayer> _players = new List<dkplayer>();
                     while (true)
                     {
                         string substr = dataconv.Substring(index);
@@ -132,17 +156,24 @@ namespace DK_UDP_Bot
                             break;
 
                         int scoreLen = substr.IndexOf(" ");
-                        string score = substr.Substring(0, scoreLen);
+                        string scoreStr = substr.Substring(0, scoreLen);
                         int pingLen = substr.IndexOf(" ", scoreLen + 1);
-                        string ping = substr.Substring(scoreLen + 1, pingLen - 1);
+
+                        string pingStr = substr.Substring(scoreLen + 1, pingLen - 1);
                         int playerEnd = substr.IndexOf('\n');
+
                         string player = substr.Substring(pingLen + 1);
                         player = player.Substring(0, player.Length - 1);
 
                         index = dataconv.IndexOf(substr) + substr.Length;
 
+                        int score, ping;
+
+                        int.TryParse(scoreStr, out score);
+                        int.TryParse(pingStr, out ping);
+
                         _playerCount++;
-                        _players.Add(player);
+                        _players.Add(new dkplayer(score, ping, player));
                     }
 
                     try
@@ -156,7 +187,7 @@ namespace DK_UDP_Bot
 
                             for (int j = 0; j < playersSize; j++)
                             {
-                                if (_players[i].Equals(server.players[j]))
+                                if (_players[i].netname.Equals(server.players[j].netname))
                                 {
                                     bFound = true;
                                     break;
@@ -165,7 +196,7 @@ namespace DK_UDP_Bot
 
                             if (bFound == false)
                             {
-                                string str = String.Format("Player {0} joined the server \"{1}\" at {2}:{3}!\n", _players[i], hostname, dstIp, dstPort);
+                                string str = String.Format("Player {0} joined the server \"{1}\" at {2}:{3}!\n", _players[i].netname, server.serverParams["hostname"], dstIp, dstPort);
                                 var chnl = _client.GetChannel(DiscordChannelId) as IMessageChannel;
                                 chnl.SendMessageAsync(str);
                             }
@@ -189,7 +220,7 @@ namespace DK_UDP_Bot
             }
         }
 
-        private void CleanUpDeadServers ()
+        private void CleanUpDeadServers()
         {
             try
             {
@@ -219,11 +250,11 @@ namespace DK_UDP_Bot
         {
             // It is recommended to Dispose of a client when you are finished
             // using it, at the end of your app's lifetime.
-            _client = new DiscordSocketClient(new DiscordSocketConfig() { LogLevel = LogSeverity.Critical, WebSocketProvider = WS4NetProvider.Instance });
+            _client = new DiscordSocketClient(new DiscordSocketConfig() { LogLevel = LogSeverity.Critical, WebSocketProvider = WS4NetProvider.Instance, GatewayIntents = GatewayIntents.AllUnprivileged | GatewayIntents.MessageContent });
 
             _client.Log += LogAsync;
             _client.Ready += ReadyAsync;
-            //_client.MessageReceived += MessageReceivedAsync;
+            _client.MessageReceived += MessageReceivedAsync;
             //_client.ReactionAdded += ReactionAddedAsync;
         }
 
@@ -258,15 +289,102 @@ namespace DK_UDP_Bot
 
         //// This is not the recommended way to write a bot - consider
         //// reading over the Commands Framework sample.
-        //private async Task MessageReceivedAsync(SocketMessage message)
-        //{
-        //}
+        private async Task MessageReceivedAsync(SocketMessage message)
+        {
+            // The bot should never respond to itself.
+            if (message.Author.Id == _client.CurrentUser.Id)
+                return;
+
+            if (message.Content.Equals("!help", StringComparison.OrdinalIgnoreCase))
+            {
+                string msg = "Commands:\n";
+                msg += "!info <server ip>:<server port>\n";
+                msg += "!servers\n";
+                msg += "!activeservers\n";
+
+                await message.Author.SendMessageAsync(msg);
+            }
+            else if (message.Content.StartsWith("!info "))
+            {
+                if (!message.Content.Contains(':'))
+                {
+                    return;
+                }
+
+                var splitStr = message.Content.Substring(6).Split(':');
+                string addr = splitStr[0];
+                int port = 0;
+                int.TryParse(splitStr[1], out port);
+
+                foreach (dkserver server in servers)
+                {
+                    if (String.Equals(server.ip, addr))
+                    {
+                        if (server.port == port)
+                        {
+                            string msg = string.Empty;
+
+                            foreach (var x in server.serverParams)
+                            {
+                                msg += String.Format("**{0}**: {1}\n", x.Key, x.Value);
+                            }
+
+                            foreach (var x in server.players)
+                            {
+                                msg += String.Format("**Player {0}**.  Ping: {1}.  Score. {2}\n", x.netname, x.ping, x.score);
+                            }
+
+                            if (!string.IsNullOrWhiteSpace(msg))
+                            {
+                                msg += "\nNOTE: stats are delayed by 60 seconds.\n";
+                                await message.Author.SendMessageAsync(msg);
+                            }
+                        }
+                    }
+                }
+            }
+            else if (message.Content.Equals("!servers", StringComparison.OrdinalIgnoreCase))
+            {
+                string msg = string.Empty;
+
+                foreach (var x in servers)
+                {
+                    msg += string.Format("\"{0}\" at {1}:{2}\n", x.serverParams["hostname"], x.ip, x.port);
+                }
+
+                if (!string.IsNullOrWhiteSpace(msg))
+                {
+                    await message.Author.SendMessageAsync(msg);
+                }
+            }
+            else if (message.Content.Equals("!activeservers", StringComparison.OrdinalIgnoreCase))
+            {
+                string msg = string.Empty;
+
+                foreach (var x in servers)
+                {
+                    if (x.activeplayers > 0)
+                    {
+                        msg += string.Format("\"{0}\" at {1}:{2} with {3} active players.\n", x.serverParams["hostname"], x.ip, x.port, x.activeplayers);
+                    }
+                }
+
+                if (string.IsNullOrWhiteSpace(msg))
+                {
+                    await message.Author.SendMessageAsync("No active servers!");
+                }
+                else
+                {
+                    await message.Author.SendMessageAsync(msg);
+                }
+            }
+        }
 
         //public async Task ReactionAddedAsync(Cacheable<IUserMessage, ulong> arg1, Cacheable<IMessageChannel, ulong> arg2, SocketReaction arg3)
         //{
         //}
 
-        private void ReadConfig ()
+        private void ReadConfig()
         {
             DiscordLoginToken = ConfigurationManager.AppSettings["DiscordLoginToken"];
             if (String.IsNullOrWhiteSpace(DiscordLoginToken))
