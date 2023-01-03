@@ -194,8 +194,10 @@ namespace DK_UDP_Bot
                                 }
                             }
 
-                            if (bFound == false)
+                            if ((bFound == false)
+                                && (string.Equals(_players[i].netname, "WallFly[BZZZ]", StringComparison.OrdinalIgnoreCase) == false))
                             {
+                                /* FS: Only alert if it's not the WallFly[BZZZ] bot. */
                                 string str = String.Format("Player {0} joined the server \"{1}\" at {2}:{3}!\n", _players[i].netname, server.serverParams["hostname"], dstIp, dstPort);
                                 var chnl = _client.GetChannel(DiscordChannelId) as IMessageChannel;
                                 chnl.SendMessageAsync(str);
@@ -241,16 +243,17 @@ namespace DK_UDP_Bot
             }
         }
 
-        // Discord.Net heavily utilizes TAP for async, so we create
-        // an asynchronous context from the beginning.
         static void Main(string[] args)
             => new Program().MainAsync().GetAwaiter().GetResult();
 
         public Program()
         {
-            // It is recommended to Dispose of a client when you are finished
-            // using it, at the end of your app's lifetime.
-            _client = new DiscordSocketClient(new DiscordSocketConfig() { LogLevel = LogSeverity.Critical, WebSocketProvider = WS4NetProvider.Instance, GatewayIntents = GatewayIntents.AllUnprivileged | GatewayIntents.MessageContent });
+            _client = new DiscordSocketClient(new DiscordSocketConfig()
+            {
+                LogLevel = LogSeverity.Critical,
+                WebSocketProvider = WS4NetProvider.Instance,
+                GatewayIntents = GatewayIntents.AllUnprivileged | GatewayIntents.MessageContent
+            });
 
             _client.Log += LogAsync;
             _client.Ready += ReadyAsync;
@@ -264,8 +267,6 @@ namespace DK_UDP_Bot
             return Task.CompletedTask;
         }
 
-        // The Ready event indicates that the client has opened a
-        // connection and it is now safe to access the cache.
         private Task ReadyAsync()
         {
             Console.WriteLine($"{_client.CurrentUser} is connected!");
@@ -287,8 +288,6 @@ namespace DK_UDP_Bot
             return Task.CompletedTask;
         }
 
-        //// This is not the recommended way to write a bot - consider
-        //// reading over the Commands Framework sample.
         private async Task MessageReceivedAsync(SocketMessage message)
         {
             // The bot should never respond to itself.
