@@ -195,7 +195,7 @@ namespace DK_UDP_Bot
                             }
 
                             if ((bFound == false)
-                                && (string.Equals(_players[i].netname, "WallFly[BZZZ]", StringComparison.OrdinalIgnoreCase) == false))
+                                && (string.Equals(_players[i].netname, "\"WallFly[BZZZ]\"", StringComparison.OrdinalIgnoreCase) == false))
                             {
                                 /* FS: Only alert if it's not the WallFly[BZZZ] bot. */
                                 string str = String.Format("Player {0} joined the server \"{1}\" at {2}:{3}!\n", _players[i].netname, server.serverParams["hostname"], dstIp, dstPort);
