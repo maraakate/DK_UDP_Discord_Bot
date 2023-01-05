@@ -258,7 +258,8 @@ namespace DK_UDP_Bot
             _client.Log += LogAsync;
             _client.Ready += ReadyAsync;
             _client.MessageReceived += MessageReceivedAsync;
-            //_client.ReactionAdded += ReactionAddedAsync;
+            _client.ReactionAdded += ReactionAddedAsync;
+            _client.ReactionRemoved += _ReactionRemoved;
         }
 
         private Task LogAsync(LogMessage log)
@@ -379,9 +380,85 @@ namespace DK_UDP_Bot
             }
         }
 
-        //public async Task ReactionAddedAsync(Cacheable<IUserMessage, ulong> arg1, Cacheable<IMessageChannel, ulong> arg2, SocketReaction arg3)
-        //{
-        //}
+        public async Task ReactionAddedAsync(Cacheable<IUserMessage, ulong> arg1, Cacheable<IMessageChannel, ulong> arg2, SocketReaction arg3)
+        {
+            var m2 = await arg1.GetOrDownloadAsync();
+            var emote = arg3.Emote;
+            string emoteRecvdStr = emote.Name.ToLower();
+
+            if (arg3.UserId == _client.CurrentUser.Id)
+                return;
+
+            string temp = ConfigurationManager.AppSettings["DiscordGuildId"];
+            ulong guildId = 0;
+            if ((ulong.TryParse(temp, out guildId) == false) || (guildId == 0))
+            {
+                return;
+            }
+
+            temp = ConfigurationManager.AppSettings["DiscordRoleId"];
+            ulong roleId = 0;
+            if ((ulong.TryParse(temp, out roleId) == false) || (roleId == 0))
+            {
+                return;
+            }
+
+            if (string.Equals(emoteRecvdStr, "daikatana_mp") == false)
+            {
+                return;
+            }
+
+            try
+            {
+                var guild = _client.GetGuild(guildId);
+                var guildUser = guild.GetUser(arg3.UserId);
+                await guildUser.AddRoleAsync(roleId);
+            }
+            catch (Exception ex)
+            {
+                Console.Write("Failed to add role to user.  Reason: {0}", ex.Message);
+            }
+        }
+
+        private async Task _ReactionRemoved(Cacheable<IUserMessage, ulong> arg1, Cacheable<IMessageChannel, ulong> arg2, SocketReaction arg3)
+        {
+            var m2 = await arg1.GetOrDownloadAsync();
+            var emote = arg3.Emote;
+            string emoteRecvdStr = emote.Name.ToLower();
+
+            if (arg3.UserId == _client.CurrentUser.Id)
+                return;
+
+            string temp = ConfigurationManager.AppSettings["DiscordGuildId"];
+            ulong guildId = 0;
+            if ((ulong.TryParse(temp, out guildId) == false) || (guildId == 0))
+            {
+                return;
+            }
+
+            temp = ConfigurationManager.AppSettings["DiscordRoleId"];
+            ulong roleId = 0;
+            if ((ulong.TryParse(temp, out roleId) == false) || (roleId == 0))
+            {
+                return;
+            }
+
+            if (string.Equals(emoteRecvdStr, "daikatana_mp") == false)
+            {
+                return;
+            }
+
+            try
+            {
+                var guild = _client.GetGuild(guildId);
+                var guildUser = guild.GetUser(arg3.UserId);
+                await guildUser.RemoveRoleAsync(roleId);
+            }
+            catch (Exception ex)
+            {
+                Console.Write("Failed to remove role from user.  Reason: {0}", ex.Message);
+            }
+        }
 
         private void ReadConfig()
         {
