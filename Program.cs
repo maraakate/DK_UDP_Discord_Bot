@@ -16,44 +16,56 @@ namespace DK_UDP_Bot
     {
         readonly DiscordSocketClient _client;
         List<dkserver> servers = new List<dkserver>();
-        readonly byte[] msQuery = { (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff',
+        readonly byte[] dkMsQuery = { (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff',
             (byte)'g', (byte)'e', (byte)'t', (byte)'s', (byte)'e', (byte)'r', (byte)'v', (byte)'e', (byte)'r', (byte)'s', (byte)' ',
             (byte)'d', (byte)'a', (byte)'i', (byte)'k', (byte)'a', (byte)'t', (byte)'a', (byte)'n', (byte)'a', 0};
-        readonly int msPort = 27900;
-        readonly string msAddr = "master.maraakate.org";
-        readonly byte[] serverQuery = { (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff',
-            (byte)'s', (byte)'t', (byte)'a', (byte)'t', (byte)'u', (byte)'s', 0 };
+        readonly byte[] hwMsQuery = { (byte)'\xff', (byte)'c', (byte)'\n' };
+        readonly byte[] dkMsResponse = { (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'s', (byte)'e', (byte)'r', (byte)'v', (byte)'e', (byte)'r', (byte)'s', (byte)' ' };
+        readonly byte[] hwMsResponse = { (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'d', (byte)'\n' };
+        readonly byte[] dkServerQuery = { (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'s', (byte)'t', (byte)'a', (byte)'t', (byte)'u', (byte)'s', 0 };
+        readonly byte[] hwServerQuery = { (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'s', (byte)'t', (byte)'a', (byte)'t', (byte)'u', (byte)'s', 0 };
+        readonly byte[] dkServerRespone = { (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'p', (byte)'r', (byte)'i', (byte)'n', (byte)'t', (byte)'\n' };
+        readonly byte[] hwServerRespone = { (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'n' };
 
+        ushort msPort = 27900;
+        string msAddr = "master.maraakate.org";
+        ushort utilityQueryPort = 27912;
+        int serverPingTimeout = 1200;
+        int querySleep = 10;
         string DiscordLoginToken = string.Empty;
+        string DiscordCurrentGame = string.Empty;
         ulong DiscordChannelId = 0;
+        bool scanDaikatanaServers = false;
+        bool scanHexenWorldServers = false;
+        bool scanHexen2Servers = false;
+        bool scanHeretic2Servers = false;
 
-        private void SendUdpMs(int srcPort)
+        #region "Send UDP request to Master Server "
+        private void SendDKUdpMs(ushort srcPort)
         {
+            if (!scanDaikatanaServers)
+            {
+                return;
+            }
+
             using (UdpClient c = new UdpClient(srcPort))
             {
                 byte[] datarecv;
-                string dataconv;
                 const int ipLen = 4;
                 const int portLen = 2;
 
-                c.Client.ReceiveTimeout = 1200;
+                c.Client.ReceiveTimeout = serverPingTimeout;
 
                 IPEndPoint RemoteIpEndPoint = new IPEndPoint(IPAddress.Any, msPort);
 
-                c.Send(msQuery, msQuery.Length, msAddr, msPort);
+                c.Send(dkMsQuery, dkMsQuery.Length, msAddr, msPort);
                 datarecv = c.Receive(ref RemoteIpEndPoint);
-                if (datarecv[0] != '\xff' && datarecv[1] != '\xff' && datarecv[2] != '\xff' && datarecv[3] != '\xff' && datarecv.Length < 10)
+                if (!MemCmp(datarecv, dkMsResponse, dkMsResponse.Length))
                 {
                     return;
                 }
 
-                dataconv = Encoding.ASCII.GetString(datarecv).Substring(4);
-                if (dataconv.StartsWith("servers ") == false)
-                {
-                    return;
-                }
-
-                int readBytes = 12;
+                int readBytes = dkMsResponse.Length;
                 int totalLen = datarecv.Length;
 
                 while (true)
@@ -82,15 +94,83 @@ namespace DK_UDP_Bot
                     }
 
                     if (bAdd)
-                        servers.Add(new dkserver(destAddress, portx));
+                        servers.Add(new dkserver(destAddress, portx, serverType.Daikatana));
 
                     readBytes += ipLen + portLen;
                 }
             }
         }
 
-        private void SendUdpServerStatus(ref dkserver server, int srcPort, string dstIp, int dstPort)
+        private void SendHWUdpMs(ushort srcPort)
         {
+            if (!scanHexenWorldServers)
+            {
+                return;
+            }
+
+            using (UdpClient c = new UdpClient(srcPort))
+            {
+                byte[] datarecv;
+                const int ipLen = 4;
+                const int portLen = 2;
+
+                c.Client.ReceiveTimeout = serverPingTimeout;
+
+                IPEndPoint RemoteIpEndPoint = new IPEndPoint(IPAddress.Any, msPort);
+
+                c.Send(hwMsQuery, hwMsQuery.Length, msAddr, msPort);
+                datarecv = c.Receive(ref RemoteIpEndPoint);
+                if (!MemCmp(datarecv, hwMsResponse, hwMsResponse.Length))
+                {
+                    return;
+                }
+
+                int readBytes = hwMsResponse.Length;
+                int totalLen = datarecv.Length;
+
+                while (true)
+                {
+                    if (readBytes >= totalLen)
+                        break;
+
+                    byte[] temp = new byte[4];
+                    Array.Copy(datarecv, readBytes, temp, 0, temp.Length);
+
+                    ushort port = BitConverter.ToUInt16(datarecv, readBytes + ipLen);
+                    ushort portx = (ushort)IPAddress.HostToNetworkOrder((short)port);
+
+                    IPAddress ip = new IPAddress(temp);
+                    string destAddress = ip.ToString();
+
+                    bool bAdd = true;
+                    foreach (dkserver server in servers)
+                    {
+                        if (server.ip == destAddress && server.port == portx)
+                        {
+                            bAdd = false;
+                            break;
+                        }
+                    }
+
+                    if (bAdd)
+                        servers.Add(new dkserver(destAddress, portx, serverType.HexenWorld));
+
+                    readBytes += ipLen + portLen;
+                }
+            }
+        }
+
+        #endregion
+
+        #region "Send UDP request to Game Server"
+
+        private void SendDKUdpServerStatus(ref dkserver server, ushort srcPort, string dstIp, ushort dstPort)
+        {
+            if (!scanDaikatanaServers)
+            {
+                return;
+            }
+
             using (UdpClient c = new UdpClient(srcPort))
             {
                 byte[] datarecv;
@@ -100,20 +180,14 @@ namespace DK_UDP_Bot
 
                 IPEndPoint RemoteIpEndPoint = new IPEndPoint(IPAddress.Any, dstPort);
 
-                c.Send(serverQuery, serverQuery.Length, dstIp, dstPort);
+                c.Send(dkServerQuery, dkServerQuery.Length, dstIp, dstPort);
                 datarecv = c.Receive(ref RemoteIpEndPoint);
-                if (datarecv[0] != '\xff' && datarecv[1] != '\xff' && datarecv[2] != '\xff' && datarecv[3] != '\xff' && datarecv.Length < 10)
+                if (!MemCmp(datarecv, dkServerRespone, dkServerRespone.Length))
                 {
                     return;
                 }
 
-                dataconv = Encoding.ASCII.GetString(datarecv).Substring(4);
-                if (dataconv.StartsWith("print\n") == false)
-                {
-                    return;
-                }
-
-                dataconv = dataconv.Substring(6);
+                dataconv = Encoding.ASCII.GetString(datarecv).Substring(dkServerRespone.Length);
 
                 Dictionary<string, string> _serverParams = new Dictionary<string, string>();
                 var dict = dataconv.Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries);
@@ -178,7 +252,7 @@ namespace DK_UDP_Bot
 
                     try
                     {
-                        int playersSize = server.players.Count;
+                        int playersSize = server.dkPlayers.Count;
                         int _playersSize = _players.Count;
 
                         for (int i = 0; i < _playersSize; i++)
@@ -187,7 +261,7 @@ namespace DK_UDP_Bot
 
                             for (int j = 0; j < playersSize; j++)
                             {
-                                if (_players[i].netname.Equals(server.players[j].netname))
+                                if (_players[i].netname.Equals(server.dkPlayers[j].netname))
                                 {
                                     bFound = true;
                                     break;
@@ -197,76 +271,215 @@ namespace DK_UDP_Bot
                             if ((bFound == false)
                                 && (string.Equals(_players[i].netname, "\"WallFly[BZZZ]\"", StringComparison.OrdinalIgnoreCase) == false))
                             {
-                                /* FS: Only alert if it's not the WallFly[BZZZ] bot. */
-                                string str = String.Format("Player {0} joined the server \"{1}\" at {2}:{3}!\n", _players[i].netname, server.serverParams["hostname"], dstIp, dstPort);
-                                var chnl = _client.GetChannel(DiscordChannelId) as IMessageChannel;
-                                chnl.SendMessageAsync(str);
+                                try
+                                {
+                                    string str = String.Format("Player {0} joined the Daikatana server \"{1}\" at {2}:{3}!  Total Players: {4}.\n", _players[i].netname, server.serverParams["hostname"], dstIp, dstPort, _playerCount);
+                                    var chnl = _client.GetChannel(DiscordChannelId) as IMessageChannel;
+                                    chnl.SendMessageAsync(str);
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.Write("Failed to send player joined message from Daikatana Server {0}:{1}.  Reason: {2}.\n", dstIp, dstPort, ex.Message);
+                                }
                             }
                         }
                     }
-                    catch
+                    catch (Exception ex)
                     {
-
+                        Console.Write("Failed to parse player data from Daikatana server {0}:{1}.  Reason: {2}.\n", dstIp, dstPort, ex.Message);
                     }
 
+                    if (server.activeplayers > 0 && _playerCount <= 0)
+                    {
+                        try
+                        {
+                            string str = String.Format("Daikatana server \"{0}\" at {1}:{2} is now empty.\n", server.serverParams["hostname"], dstIp, dstPort);
+                            var chnl = _client.GetChannel(DiscordChannelId) as IMessageChannel;
+                            chnl.SendMessageAsync(str);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.Write("Failed to send server now empty message from Daikatana server {0}:{1}.  Reason: {2}.\n", dstIp, dstPort, ex.Message);
+                        }
+                    }
                     server.activeplayers = _playerCount;
-                    server.players = _players;
+                    server.dkPlayers = _players;
                 }
                 else
                 {
                     server.activeplayers = 0;
-                    server.players.Clear();
+                    server.dkPlayers.Clear();
                 }
 
                 server.heartbeat = DateTime.UtcNow;
             }
         }
 
-        private void CleanUpDeadServers()
+        private void SendHWUdpServerStatus(ref dkserver server, ushort srcPort, string dstIp, ushort dstPort)
         {
-            try
+            using (UdpClient c = new UdpClient(srcPort))
             {
-            start:
-                foreach (dkserver server in servers)
+                byte[] datarecv;
+                string dataconv;
+
+                c.Client.ReceiveTimeout = 1200;
+
+                IPEndPoint RemoteIpEndPoint = new IPEndPoint(IPAddress.Any, dstPort);
+
+                c.Send(hwServerQuery, hwServerQuery.Length, dstIp, dstPort);
+                datarecv = c.Receive(ref RemoteIpEndPoint);
+                if (!MemCmp(datarecv, hwServerRespone, hwServerRespone.Length))
                 {
-                    var offset = DateTime.UtcNow - server.heartbeat;
-                    if (offset.TotalMinutes >= 5)
+                    return;
+                }
+
+                dataconv = Encoding.ASCII.GetString(datarecv).Substring(hwServerRespone.Length);
+
+                Dictionary<string, string> _serverParams = new Dictionary<string, string>();
+                var dict = dataconv.Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries);
+                int totalLen = dict.Length;
+                for (int x = 0; x < totalLen; x += 2)
+                {
+                    if (x + 1 > totalLen)
+                        break;
+
+                    if (dict[x + 1].Contains("\n"))
                     {
-                        servers.Remove(server);
-                        goto start;
+                        int trim = dict[x + 1].IndexOf('\n');
+                        string tempVal = dict[x + 1].Substring(0, trim);
+                        if (!_serverParams.ContainsKey(dict[x]))
+                        {
+                            _serverParams.Add(dict[x], tempVal);
+                        }
+                        break;
+                    }
+
+                    if (!_serverParams.ContainsKey(dict[x])) /* FS: Older versions of DK 1.3 stupidly sent hostname and maxclients twice. */
+                    {
+                        _serverParams.Add(dict[x], dict[x + 1]);
                     }
                 }
+
+                server.serverParams = _serverParams;
+
+                if (dataconv.Contains('\n'))
+                {
+                    int index = dataconv.IndexOf('\n') + 1;
+                    int _playerCount = 0;
+                    List<hwplayer> _players = new List<hwplayer>();
+                    while (true)
+                    {
+                        int userid, frags, connectTime, ping, top, bottom;
+                        string name, skin;
+                        string substr = dataconv.Substring(index);
+                        index = substr.IndexOf('\n') + 1;
+                        substr = substr.Substring(0, index);
+                        if (substr.Length == 0)
+                            break;
+
+                        string[] tok = substr.Split(' ', StringSplitOptions.None);
+                        if (tok.Length != 8)
+                            break;
+
+                        int.TryParse(tok[0], out userid);
+                        int.TryParse(tok[1], out frags);
+                        int.TryParse(tok[2], out connectTime);
+                        int.TryParse(tok[3], out ping);
+                        try
+                        {
+                            name = tok[4].Split('\"', StringSplitOptions.RemoveEmptyEntries)[0];
+                        }
+                        catch
+                        {
+                            name = "Player";
+                        }
+
+                        try
+                        {
+                            skin = tok[5].Split('\"', StringSplitOptions.RemoveEmptyEntries)[0];
+                        }
+                        catch
+                        {
+                            skin = "";
+                        }
+                        int.TryParse(tok[6], out top);
+                        int.TryParse(tok[7], out bottom);
+
+                        _playerCount++;
+                        index = dataconv.IndexOf(substr) + substr.Length;
+
+                        _players.Add(new hwplayer(userid, frags, connectTime, ping, name, skin, top, bottom));
+                    }
+
+                    try
+                    {
+                        int playersSize = server.hwPlayers.Count;
+                        int _playersSize = _players.Count;
+
+                        for (int i = 0; i < _playersSize; i++)
+                        {
+                            bool bFound = false;
+
+                            for (int j = 0; j < playersSize; j++)
+                            {
+                                if (_players[i].name.Equals(server.hwPlayers[j].name))
+                                {
+                                    bFound = true;
+                                    break;
+                                }
+                            }
+
+                            if ((bFound == false)
+                                && (string.Equals(_players[i].name, "\"WallFly[BZZZ]\"", StringComparison.OrdinalIgnoreCase) == false))
+                            {
+                                /* FS: Only alert if it's not the WallFly[BZZZ] bot. */
+                                try
+                                {
+                                    string str = String.Format("Player {0} joined the HexenWorld server \"{1}\" at {2}:{3}!  Total Players: {4}.\n", _players[i].name, server.serverParams["hostname"], dstIp, dstPort, _playerCount);
+                                    var chnl = _client.GetChannel(DiscordChannelId) as IMessageChannel;
+                                    chnl.SendMessageAsync(str);
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.Write("Failed to send player joined message from HexenWorld server {0}:{1}.  Reason: {2}.\n", dstIp, dstPort, ex.Message);
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Write("Failed to parse player data from HexenWorld server {0}:{1}.  Reason: {2}.\n", dstIp, dstPort, ex.Message);
+                    }
+
+                    if (server.activeplayers > 0 && _playerCount <= 0)
+                    {
+                        try
+                        {
+                            string str = String.Format("HexenWorld server \"{0}\" at {1}:{2} is now empty.\n", server.serverParams["hostname"], dstIp, dstPort);
+                            var chnl = _client.GetChannel(DiscordChannelId) as IMessageChannel;
+                            chnl.SendMessageAsync(str);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.Write("Failed to send server now empty message from HexenWorld server {0}:{1}.  Reason: {2}.\n", dstIp, dstPort, ex.Message);
+                        }
+                    }
+                    server.activeplayers = _playerCount;
+                    server.hwPlayers = _players;
+                }
+                else
+                {
+                    server.activeplayers = 0;
+                    server.hwPlayers.Clear();
+                }
+
+                server.heartbeat = DateTime.UtcNow;
             }
-            catch
-            {
-
-            }
         }
 
-        static void Main(string[] args)
-            => new Program().MainAsync().GetAwaiter().GetResult();
+        #endregion
 
-        public Program()
-        {
-            _client = new DiscordSocketClient(new DiscordSocketConfig()
-            {
-                LogLevel = LogSeverity.Critical,
-                WebSocketProvider = WS4NetProvider.Instance,
-                GatewayIntents = GatewayIntents.AllUnprivileged | GatewayIntents.MessageContent
-            });
-
-            _client.Log += LogAsync;
-            _client.Ready += ReadyAsync;
-            _client.MessageReceived += MessageReceivedAsync;
-            _client.ReactionAdded += ReactionAddedAsync;
-            _client.ReactionRemoved += _ReactionRemoved;
-        }
-
-        private Task LogAsync(LogMessage log)
-        {
-            Console.WriteLine(log.ToString());
-            return Task.CompletedTask;
-        }
+        #region "Discord Async Functions"
 
         private Task ReadyAsync()
         {
@@ -284,7 +497,7 @@ namespace DK_UDP_Bot
             }
 
             var chnl = _client.GetChannel(id) as IMessageChannel;
-            chnl.SendMessageAsync(str);
+            //chnl.SendMessageAsync(str);
 
             return Task.CompletedTask;
         }
@@ -314,33 +527,81 @@ namespace DK_UDP_Bot
                 var splitStr = message.Content.Substring(6).Split(':');
                 string addr = splitStr[0];
                 int port = 0;
+                bool bSent = false;
                 int.TryParse(splitStr[1], out port);
+
+                try
+                {
+                    IPAddress[] addresslist = Dns.GetHostAddresses(addr);
+                    if (addresslist.Length > 0)
+                    {
+                        addr = addresslist[0].ToString();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.Write("Unable to convert hostname to IP for !info command.  Reason: {0}.\n", ex.Message);
+                }
 
                 foreach (dkserver server in servers)
                 {
-                    if (String.Equals(server.ip, addr))
+                    try
                     {
-                        if (server.port == port)
+                        if (String.Equals(server.ip, addr))
                         {
-                            string msg = string.Empty;
-
-                            foreach (var x in server.serverParams)
+                            if (server.port == port)
                             {
-                                msg += String.Format("**{0}**: {1}\n", x.Key, x.Value);
-                            }
+                                string msg = string.Empty;
 
-                            foreach (var x in server.players)
-                            {
-                                msg += String.Format("**Player {0}**.  Ping: {1}.  Score. {2}\n", x.netname, x.ping, x.score);
-                            }
+                                foreach (var x in server.serverParams)
+                                {
+                                    msg += String.Format("**{0}**: {1}\n", x.Key, x.Value);
+                                }
 
-                            if (!string.IsNullOrWhiteSpace(msg))
-                            {
-                                msg += "\nNOTE: stats are delayed by 60 seconds.\n";
-                                await message.Author.SendMessageAsync(msg);
+                                switch (server.serverType)
+                                {
+                                    case serverType.Daikatana:
+                                        {
+                                            foreach (var x in server.dkPlayers)
+                                            {
+                                                msg += String.Format("**Player {0}**.  Ping: {1}.  Score: {2}.\n", x.netname, x.ping, x.score);
+                                            }
+                                            break;
+                                        }
+                                    case serverType.HexenWorld:
+                                        {
+                                            foreach (var x in server.hwPlayers)
+                                            {
+                                                msg += String.Format("**Player {0}**.  Ping: {1}.  Score: {2}.\n", x.name, x.ping, x.frags);
+                                            }
+                                            break;
+                                        }
+                                    default:
+                                        {
+                                            break;
+                                        }
+                                }
+
+                                if (!string.IsNullOrWhiteSpace(msg))
+                                {
+                                    msg += string.Format("\nNOTE: stats are delayed by {0} seconds.\n", querySleep);
+                                    await message.Author.SendMessageAsync(msg);
+                                    bSent = true;
+                                    break;
+                                }
                             }
                         }
                     }
+                    catch (Exception ex)
+                    {
+                        Console.Write("Failed to parse !info command.  Reason: {0}\n", ex.Message);
+                        await message.Author.SendMessageAsync("Unable to parse serverinfo!\n");
+                    }
+                }
+
+                if (bSent == false)
+                {
+                    await message.Author.SendMessageAsync("Server not in list!\n");
                 }
             }
             else if (message.Content.Equals("!servers", StringComparison.OrdinalIgnoreCase))
@@ -349,7 +610,19 @@ namespace DK_UDP_Bot
 
                 foreach (var x in servers)
                 {
-                    msg += string.Format("\"{0}\" at {1}:{2}\n", x.serverParams["hostname"], x.ip, x.port);
+                    try
+                    {
+                        msg += string.Format("{0} server \"{1}\" at {2}:{3} with {4} active players.\n",
+                        x.serverType.ToString(),
+                        x.serverParams["hostname"],
+                        x.ip,
+                        x.port,
+                        x.activeplayers);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Write("Failed to parse !servers message from {0} server {1}:{2}.  Reason: {3}.\n", x.serverType.ToString(), x.ip, x.port, ex.Message);
+                    }
                 }
 
                 if (!string.IsNullOrWhiteSpace(msg))
@@ -365,7 +638,19 @@ namespace DK_UDP_Bot
                 {
                     if (x.activeplayers > 0)
                     {
-                        msg += string.Format("\"{0}\" at {1}:{2} with {3} active players.\n", x.serverParams["hostname"], x.ip, x.port, x.activeplayers);
+                        try
+                        {
+                            msg += string.Format("{0} server \"{1}\" at {2}:{3} with {4} active players.\n",
+                            x.serverType.ToString(),
+                            x.serverParams["hostname"],
+                            x.ip,
+                            x.port,
+                            x.activeplayers);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.Write("Failed to parse !activeservers message from {0} server {1}:{2}.  Reason: {3}.\n", x.serverType.ToString(), x.ip, x.port, ex.Message);
+                        }
                     }
                 }
 
@@ -460,6 +745,54 @@ namespace DK_UDP_Bot
             }
         }
 
+        #endregion
+
+        #region "Maintenance Functions"
+
+        private Task LogAsync(LogMessage log)
+        {
+            Console.WriteLine(log.ToString());
+            return Task.CompletedTask;
+        }
+
+        private bool MemCmp(byte[] a, byte[] b, int count)
+        {
+            int aLen = a.Length;
+            int bLen = b.Length;
+
+            for (int i = 0; i < count; i++)
+            {
+                if (aLen <= i || bLen <= i)
+                    return false;
+
+                if (a[i] != b[i])
+                    return false;
+            }
+
+            return true;
+        }
+
+        private void CleanUpDeadServers()
+        {
+            try
+            {
+            start:
+                foreach (dkserver server in servers)
+                {
+                    var offset = DateTime.UtcNow - server.heartbeat;
+                    if (offset.TotalMinutes >= 5)
+                    {
+                        servers.Remove(server);
+                        goto start;
+                    }
+                }
+            }
+            catch
+            {
+
+            }
+        }
+
         private void ReadConfig()
         {
             DiscordLoginToken = ConfigurationManager.AppSettings["DiscordLoginToken"];
@@ -477,12 +810,109 @@ namespace DK_UDP_Bot
             {
                 throw new Exception("Failed to convert DiscordChannelId to ulong!");
             }
+
+            temp = ConfigurationManager.AppSettings["ScanDaikatanaServers"];
+            if (!string.IsNullOrWhiteSpace(temp) && temp.StartsWith("1"))
+            {
+                scanDaikatanaServers = true;
+            }
+
+            temp = ConfigurationManager.AppSettings["ScanHexenWorldServers"];
+            if (!string.IsNullOrWhiteSpace(temp) && temp.StartsWith("1"))
+            {
+                scanHexenWorldServers = true;
+            }
+
+            temp = ConfigurationManager.AppSettings["ScanHexen2Servers"];
+            if (!string.IsNullOrWhiteSpace(temp) && temp.StartsWith("1"))
+            {
+                scanHexen2Servers = true;
+            }
+            temp = ConfigurationManager.AppSettings["ScanHeretic2Servers"];
+            if (!string.IsNullOrWhiteSpace(temp) && temp.StartsWith("1"))
+            {
+                scanHeretic2Servers = true;
+            }
+
+            temp = ConfigurationManager.AppSettings["DiscordCurrentGame"];
+            if (!string.IsNullOrWhiteSpace(temp))
+            {
+                DiscordCurrentGame = temp;
+            }
+
+            if (!scanDaikatanaServers && !scanHexenWorldServers && !scanHexen2Servers && !scanHeretic2Servers)
+            {
+                throw new Exception("You must set a server type to scan!");
+            }
+
+            temp = ConfigurationManager.AppSettings["MasterServerIP"];
+            if (!string.IsNullOrWhiteSpace(temp))
+            {
+                msAddr = temp;
+            }
+
+            temp = ConfigurationManager.AppSettings["UtilityQueryPort"];
+            if (!string.IsNullOrWhiteSpace(temp))
+            {
+                if (ushort.TryParse(temp, out utilityQueryPort) == false)
+                {
+                    throw new Exception("Failed to convert UtilityQueryPort to ushort!");
+                }
+            }
+
+            temp = ConfigurationManager.AppSettings["MasterServerPort"];
+            if (!string.IsNullOrWhiteSpace(temp))
+            {
+                if (ushort.TryParse(temp, out msPort) == false)
+                {
+                    throw new Exception("Failed to convert MasterServerPort to ushort!");
+                }
+            }
+
+            temp = ConfigurationManager.AppSettings["ServerPingTimeout"];
+            if (!string.IsNullOrWhiteSpace(temp))
+            {
+                if (int.TryParse(temp, out serverPingTimeout) == false)
+                {
+                    throw new Exception("Failed to convert ServerPingTimeout to int!");
+                }
+            }
+
+            temp = ConfigurationManager.AppSettings["QuerySleep"];
+            if (!string.IsNullOrWhiteSpace(temp))
+            {
+                if (int.TryParse(temp, out querySleep) == false)
+                {
+                    throw new Exception("Failed to convert QuerySleep to int!");
+                }
+            }
+        }
+
+        #endregion
+
+        #region "Main Loop"
+
+        static void Main(string[] args)
+            => new Program().MainAsync().GetAwaiter().GetResult();
+
+        public Program()
+        {
+            _client = new DiscordSocketClient(new DiscordSocketConfig()
+            {
+                LogLevel = LogSeverity.Critical,
+                WebSocketProvider = WS4NetProvider.Instance,
+                GatewayIntents = GatewayIntents.AllUnprivileged | GatewayIntents.MessageContent
+            });
+
+            _client.Log += LogAsync;
+            _client.Ready += ReadyAsync;
+            _client.MessageReceived += MessageReceivedAsync;
+            _client.ReactionAdded += ReactionAddedAsync;
+            _client.ReactionRemoved += _ReactionRemoved;
         }
 
         public async Task MainAsync()
         {
-            int intPort = 27192;
-
             _handler += new EventHandler(Handler);
             SetConsoleCtrlHandler(_handler, true);
 
@@ -491,18 +921,22 @@ namespace DK_UDP_Bot
             // Tokens should be considered secret data, and never hard-coded.
             await _client.LoginAsync(TokenType.Bot, DiscordLoginToken);
             await _client.StartAsync();
-            await _client.SetGameAsync("Daikatana");
+            if (!string.IsNullOrWhiteSpace(DiscordCurrentGame))
+            {
+                await _client.SetGameAsync(DiscordCurrentGame);
+            }
 
             // Block the program until it is closed.
             while (!exitSystem)
             {
                 try
                 {
-                    SendUdpMs(intPort);
+                    SendDKUdpMs(utilityQueryPort);
+                    SendHWUdpMs(utilityQueryPort);
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine(ex.Message);
+                    Console.Write("Main SendUdpMS loop exception.  Reason: {0}\n.", ex.Message);
                 }
 
                 int size = servers.Count;
@@ -512,16 +946,30 @@ namespace DK_UDP_Bot
                     try
                     {
                         dkserver server = servers[i];
-                        SendUdpServerStatus(ref server, intPort, server.ip, server.port);
+                        switch (server.serverType)
+                        {
+                            case serverType.Daikatana:
+                                SendDKUdpServerStatus(ref server, utilityQueryPort, server.ip, server.port);
+                                break;
+                            case serverType.HexenWorld:
+                                SendHWUdpServerStatus(ref server, utilityQueryPort, server.ip, server.port);
+                                break;
+                            default:
+                                break;
+
+                        }
                     }
-                    catch
+                    catch (Exception ex)
                     {
+                        Console.Write("Main SendUDPServerStatus loop exception.  Reason: {0}.\n", ex.Message);
                     }
                 }
 
                 CleanUpDeadServers();
-                Thread.Sleep(1000 * 60);
+                Thread.Sleep(1000 * querySleep);
             }
         }
+
+        #endregion
     }
 }
