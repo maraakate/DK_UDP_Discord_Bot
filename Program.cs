@@ -27,7 +27,8 @@ namespace DK_UDP_Bot
         readonly byte[] dkServerRespone = { (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'p', (byte)'r', (byte)'i', (byte)'n', (byte)'t', (byte)'\n' };
         readonly byte[] hwServerRespone = { (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'n' };
 
-        ushort msPort = 27900;
+        ushort msUDPPort = 27900;
+        ushort msTCPPort = 28900;
         string msAddr = "master.maraakate.org";
         ushort utilityQueryPort = 27912;
         int serverPingTimeout = 1200;
@@ -40,8 +41,90 @@ namespace DK_UDP_Bot
         bool scanHexen2Servers = false;
         bool scanHeretic2Servers = false;
 
-        #region "Send UDP request to Master Server "
-        private void SendDKUdpMs(ushort srcPort)
+        #region "Send TCP request to GameSpy Master Server"
+
+        private void SendHeretic2TCPMs()
+        {
+            if (!scanHeretic2Servers)
+            {
+                return;
+            }
+
+            using (TcpClient c = new TcpClient(msAddr, msTCPPort))
+            {
+                int len = 0;
+                byte[] datarecv = new byte[4096];
+                len = c.Client.Receive(datarecv);
+                if (len > 0)
+                {
+                    string dataconv = Encoding.ASCII.GetString(datarecv).Substring(0, len);
+                    string seckey = dataconv.Substring(15);
+                    byte[] seckeyByte = new byte[4096];
+                    seckeyByte = Encoding.ASCII.GetBytes(seckey);
+                    gsmalg gsm = new gsmalg();
+                    byte[] secKeyOutByte = gsm.gsseckey(null, seckeyByte, Encoding.ASCII.GetBytes("2iuCAS"));
+                    string secKeyOutStr = Encoding.ASCII.GetString(secKeyOutByte).Substring(0, 8);
+                    string incomingTcpValidate = string.Format(@"\gamename\heretic2\validate\{0}\final\\queryid\1.1\\list\cmp\gamename\heretic2\", secKeyOutStr);
+                    c.Client.Send(Encoding.ASCII.GetBytes(incomingTcpValidate));
+                    len = c.Client.Receive(datarecv);
+                    if (len > 0)
+                    {
+                        int ipLen = 4;
+                        int portLen = 2;
+                        int readBytes = 0;
+                        string str = Encoding.ASCII.GetString(datarecv).Substring(0, len);
+                        if (str.EndsWith("\\final\\"))
+                        {
+                            len -= 7;
+                        }
+
+                        while (true)
+                        {
+                            if (readBytes >= len)
+                                break;
+
+                            byte[] temp = new byte[4];
+                            Array.Copy(datarecv, readBytes, temp, 0, temp.Length);
+
+                            ushort port = BitConverter.ToUInt16(datarecv, readBytes + ipLen);
+                            ushort portx = (ushort)IPAddress.HostToNetworkOrder((short)port);
+                            portx -= 1;
+
+                            IPAddress ip = new IPAddress(temp);
+                            string destAddress = ip.ToString();
+
+                            bool bAdd = true;
+                            foreach (dkserver server in servers)
+                            {
+                                if (server.ip == destAddress && server.port == portx)
+                                {
+                                    bAdd = false;
+                                    break;
+                                }
+                            }
+
+                            if (bAdd)
+                                servers.Add(new dkserver(destAddress, portx, serverType.Heretic2));
+
+                            readBytes += ipLen + portLen;
+                        }
+                    }
+                    else
+                    {
+                        Console.Write("No list response received from master server while querying for Heretic II.\n");
+                    }
+                }
+                else
+                {
+                    Console.Write("No challenge received from master server while querying for Heretic II.\n");
+                }
+            }
+        }
+
+        #endregion
+
+        #region "Send UDP request to Master Server"
+        private void SendDaikatanaKUDPMs(ushort srcPort)
         {
             if (!scanDaikatanaServers)
             {
@@ -56,9 +139,9 @@ namespace DK_UDP_Bot
 
                 c.Client.ReceiveTimeout = serverPingTimeout;
 
-                IPEndPoint RemoteIpEndPoint = new IPEndPoint(IPAddress.Any, msPort);
+                IPEndPoint RemoteIpEndPoint = new IPEndPoint(IPAddress.Any, msUDPPort);
 
-                c.Send(dkMsQuery, dkMsQuery.Length, msAddr, msPort);
+                c.Send(dkMsQuery, dkMsQuery.Length, msAddr, msUDPPort);
                 datarecv = c.Receive(ref RemoteIpEndPoint);
                 if (!MemCmp(datarecv, dkMsResponse, dkMsResponse.Length))
                 {
@@ -101,7 +184,7 @@ namespace DK_UDP_Bot
             }
         }
 
-        private void SendHWUdpMs(ushort srcPort)
+        private void SendHexenWorldUDPMs(ushort srcPort)
         {
             if (!scanHexenWorldServers)
             {
@@ -116,9 +199,9 @@ namespace DK_UDP_Bot
 
                 c.Client.ReceiveTimeout = serverPingTimeout;
 
-                IPEndPoint RemoteIpEndPoint = new IPEndPoint(IPAddress.Any, msPort);
+                IPEndPoint RemoteIpEndPoint = new IPEndPoint(IPAddress.Any, msUDPPort);
 
-                c.Send(hwMsQuery, hwMsQuery.Length, msAddr, msPort);
+                c.Send(hwMsQuery, hwMsQuery.Length, msAddr, msUDPPort);
                 datarecv = c.Receive(ref RemoteIpEndPoint);
                 if (!MemCmp(datarecv, hwMsResponse, hwMsResponse.Length))
                 {
@@ -164,7 +247,7 @@ namespace DK_UDP_Bot
 
         #region "Send UDP request to Game Server"
 
-        private void SendDKUdpServerStatus(ref dkserver server, ushort srcPort, string dstIp, ushort dstPort)
+        private void SendDaikatanaUDPServerStatus(ref dkserver server, ushort srcPort, string dstIp, ushort dstPort)
         {
             if (!scanDaikatanaServers)
             {
@@ -315,7 +398,158 @@ namespace DK_UDP_Bot
             }
         }
 
-        private void SendHWUdpServerStatus(ref dkserver server, ushort srcPort, string dstIp, ushort dstPort)
+        private void SendHeretic2UDPServerStatus(ref dkserver server, ushort srcPort, string dstIp, ushort dstPort)
+        {
+            if (!scanHeretic2Servers)
+            {
+                return;
+            }
+
+            using (UdpClient c = new UdpClient(srcPort))
+            {
+                byte[] datarecv;
+                string dataconv;
+
+                c.Client.ReceiveTimeout = 1200;
+
+                IPEndPoint RemoteIpEndPoint = new IPEndPoint(IPAddress.Any, dstPort);
+
+                c.Send(dkServerQuery, dkServerQuery.Length, dstIp, dstPort);
+                datarecv = c.Receive(ref RemoteIpEndPoint);
+                if (!MemCmp(datarecv, dkServerRespone, dkServerRespone.Length))
+                {
+                    return;
+                }
+
+                dataconv = Encoding.ASCII.GetString(datarecv).Substring(dkServerRespone.Length);
+
+                Dictionary<string, string> _serverParams = new Dictionary<string, string>();
+                var dict = dataconv.Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries);
+                int totalLen = dict.Length;
+                for (int x = 0; x < totalLen; x += 2)
+                {
+                    if (x + 1 > totalLen)
+                        break;
+
+                    if (dict[x + 1].Contains("\n"))
+                    {
+                        int trim = dict[x + 1].IndexOf('\n');
+                        string tempVal = dict[x + 1].Substring(0, trim);
+                        if (!_serverParams.ContainsKey(dict[x]))
+                        {
+                            _serverParams.Add(dict[x], tempVal);
+                        }
+                        break;
+                    }
+
+                    if (!_serverParams.ContainsKey(dict[x])) /* FS: Older versions of DK 1.3 stupidly sent hostname and maxclients twice. */
+                    {
+                        _serverParams.Add(dict[x], dict[x + 1]);
+                    }
+                }
+
+                server.serverParams = _serverParams;
+
+                if (dataconv.Contains('\n'))
+                {
+                    int index = dataconv.IndexOf('\n') + 1;
+                    int _playerCount = 0;
+                    List<dkplayer> _players = new List<dkplayer>();
+                    while (true)
+                    {
+                        string substr = dataconv.Substring(index);
+                        index = substr.IndexOf('\n') + 1;
+                        substr = substr.Substring(0, index);
+                        if (substr.Length == 0)
+                            break;
+
+                        int scoreLen = substr.IndexOf(" ");
+                        string scoreStr = substr.Substring(0, scoreLen);
+                        int pingLen = substr.IndexOf(" ", scoreLen + 1);
+
+                        string pingStr = substr.Substring(scoreLen + 1, pingLen - 1);
+                        int playerEnd = substr.IndexOf('\n');
+
+                        string player = substr.Substring(pingLen + 1);
+                        player = player.Substring(0, player.Length - 1);
+
+                        index = dataconv.IndexOf(substr) + substr.Length;
+
+                        int score, ping;
+
+                        int.TryParse(scoreStr, out score);
+                        int.TryParse(pingStr, out ping);
+
+                        _playerCount++;
+                        _players.Add(new dkplayer(score, ping, player));
+                    }
+
+                    try
+                    {
+                        int playersSize = server.dkPlayers.Count;
+                        int _playersSize = _players.Count;
+
+                        for (int i = 0; i < _playersSize; i++)
+                        {
+                            bool bFound = false;
+
+                            for (int j = 0; j < playersSize; j++)
+                            {
+                                if (_players[i].netname.Equals(server.dkPlayers[j].netname))
+                                {
+                                    bFound = true;
+                                    break;
+                                }
+                            }
+
+                            if ((bFound == false)
+                                && (string.Equals(_players[i].netname, "\"WallFly[BZZZ]\"", StringComparison.OrdinalIgnoreCase) == false))
+                            {
+                                try
+                                {
+                                    string str = String.Format("Player {0} joined the Heretic II server \"{1}\" at {2}:{3}!  Total Players: {4}.\n", _players[i].netname, server.serverParams["hostname"], dstIp, dstPort, _playerCount);
+                                    var chnl = _client.GetChannel(DiscordChannelId) as IMessageChannel;
+                                    chnl.SendMessageAsync(str);
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.Write("Failed to send player joined message from Heretic II Server {0}:{1}.  Reason: {2}.\n", dstIp, dstPort, ex.Message);
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Write("Failed to parse player data from Heretic II server {0}:{1}.  Reason: {2}.\n", dstIp, dstPort, ex.Message);
+                    }
+
+                    if (server.activeplayers > 0 && _playerCount <= 0)
+                    {
+                        try
+                        {
+                            string str = String.Format("Heretic II server \"{0}\" at {1}:{2} is now empty.\n", server.serverParams["hostname"], dstIp, dstPort);
+                            var chnl = _client.GetChannel(DiscordChannelId) as IMessageChannel;
+                            chnl.SendMessageAsync(str);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.Write("Failed to send server now empty message from Daikatana server {0}:{1}.  Reason: {2}.\n", dstIp, dstPort, ex.Message);
+                        }
+                    }
+                    server.activeplayers = _playerCount;
+                    server.dkPlayers = _players;
+                }
+                else
+                {
+                    server.activeplayers = 0;
+                    server.dkPlayers.Clear();
+                }
+
+                server.heartbeat = DateTime.UtcNow;
+            }
+        }
+
+        private void SendHexenWorldUDPServerStatus(ref dkserver server, ushort srcPort, string dstIp, ushort dstPort)
         {
             using (UdpClient c = new UdpClient(srcPort))
             {
@@ -573,6 +807,14 @@ namespace DK_UDP_Bot
                                             foreach (var x in server.hwPlayers)
                                             {
                                                 msg += String.Format("**Player {0}**.  Ping: {1}.  Score: {2}.\n", x.name, x.ping, x.frags);
+                                            }
+                                            break;
+                                        }
+                                    case serverType.Heretic2:
+                                        {
+                                            foreach (var x in server.dkPlayers)
+                                            {
+                                                msg += String.Format("**Player {0}**.  Ping: {1}.  Score: {2}.\n", x.netname, x.ping, x.score);
                                             }
                                             break;
                                         }
@@ -860,12 +1102,21 @@ namespace DK_UDP_Bot
                 }
             }
 
-            temp = ConfigurationManager.AppSettings["MasterServerPort"];
+            temp = ConfigurationManager.AppSettings["MasterServerUDPPort"];
             if (!string.IsNullOrWhiteSpace(temp))
             {
-                if (ushort.TryParse(temp, out msPort) == false)
+                if (ushort.TryParse(temp, out msUDPPort) == false)
                 {
-                    throw new Exception("Failed to convert MasterServerPort to ushort!");
+                    throw new Exception("Failed to convert MasterServerUDPPort to ushort!");
+                }
+            }
+
+            temp = ConfigurationManager.AppSettings["MasterServerTCPPort"];
+            if (!string.IsNullOrWhiteSpace(temp))
+            {
+                if (ushort.TryParse(temp, out msTCPPort) == false)
+                {
+                    throw new Exception("Failed to convert MasterServerTCPPort to ushort!");
                 }
             }
 
@@ -931,8 +1182,9 @@ namespace DK_UDP_Bot
             {
                 try
                 {
-                    SendDKUdpMs(utilityQueryPort);
-                    SendHWUdpMs(utilityQueryPort);
+                    SendDaikatanaKUDPMs(utilityQueryPort);
+                    SendHexenWorldUDPMs(utilityQueryPort);
+                    SendHeretic2TCPMs();
                 }
                 catch (Exception ex)
                 {
@@ -949,10 +1201,13 @@ namespace DK_UDP_Bot
                         switch (server.serverType)
                         {
                             case serverType.Daikatana:
-                                SendDKUdpServerStatus(ref server, utilityQueryPort, server.ip, server.port);
+                                SendDaikatanaUDPServerStatus(ref server, utilityQueryPort, server.ip, server.port);
+                                break;
+                            case serverType.Heretic2:
+                                SendHeretic2UDPServerStatus(ref server, utilityQueryPort, server.ip, server.port);
                                 break;
                             case serverType.HexenWorld:
-                                SendHWUdpServerStatus(ref server, utilityQueryPort, server.ip, server.port);
+                                SendHexenWorldUDPServerStatus(ref server, utilityQueryPort, server.ip, server.port);
                                 break;
                             default:
                                 break;

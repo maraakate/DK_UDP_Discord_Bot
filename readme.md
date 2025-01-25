@@ -1,6 +1,6 @@
 ﻿idTech1 and idTech2 UDP bot for Discord by [HCI]Mara'akate.
 
-Currently only works for Daikatana and HexenWorld.
+Currently only works for Daikatana, Heretic II, and HexenWorld.
 
 Pings a master server, caches the server list then queries them
 every so often (defined in app.config).
