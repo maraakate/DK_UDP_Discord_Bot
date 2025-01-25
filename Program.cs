@@ -497,7 +497,7 @@ namespace DK_UDP_Bot
             }
 
             var chnl = _client.GetChannel(id) as IMessageChannel;
-            //chnl.SendMessageAsync(str);
+            chnl.SendMessageAsync(str);
 
             return Task.CompletedTask;
         }
