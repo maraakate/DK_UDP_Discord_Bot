@@ -65,8 +65,7 @@ namespace DK_UDP_Bot
                 {
                     string dataconv = Encoding.ASCII.GetString(datarecv).Substring(0, len);
                     string seckey = dataconv.Substring(15);
-                    byte[] seckeyByte = new byte[4096];
-                    seckeyByte = Encoding.ASCII.GetBytes(seckey);
+                    byte[] seckeyByte = Encoding.ASCII.GetBytes(seckey);
                     gsmalg gsm = new gsmalg();
                     byte[] secKeyOutByte = gsm.gsseckey(null, seckeyByte, Encoding.ASCII.GetBytes("2iuCAS"));
                     string secKeyOutStr = Encoding.ASCII.GetString(secKeyOutByte).Substring(0, 8);
@@ -143,8 +142,7 @@ namespace DK_UDP_Bot
                 {
                     string dataconv = Encoding.ASCII.GetString(datarecv).Substring(0, len);
                     string seckey = dataconv.Substring(15);
-                    byte[] seckeyByte = new byte[4096];
-                    seckeyByte = Encoding.ASCII.GetBytes(seckey);
+                    byte[] seckeyByte = Encoding.ASCII.GetBytes(seckey);
                     gsmalg gsm = new gsmalg();
                     byte[] secKeyOutByte = gsm.gsseckey(null, seckeyByte, Encoding.ASCII.GetBytes("FAKEKEY"));
                     string secKeyOutStr = Encoding.ASCII.GetString(secKeyOutByte).Substring(0, 8);
@@ -903,7 +901,6 @@ namespace DK_UDP_Bot
                 header[3] = (byte)'\x06';
                 header[4] = (byte)'\x03';
 
-                phase = 0;
                 int _playerCount = 0;
                 List<hwplayer> _players = new List<hwplayer>();
                 while (true)
@@ -1101,6 +1098,11 @@ namespace DK_UDP_Bot
 
                                 foreach (var x in server.serverParams)
                                 {
+                                    if (msg.Length >= 1500)
+                                    {
+                                        await message.Author.SendMessageAsync(msg);
+                                        msg = string.Empty;
+                                    }
                                     msg += String.Format("**{0}**: {1}\n", x.Key, x.Value);
                                 }
 
@@ -1110,6 +1112,11 @@ namespace DK_UDP_Bot
                                         {
                                             foreach (var x in server.dkPlayers)
                                             {
+                                                if (msg.Length >= 1500)
+                                                {
+                                                    await message.Author.SendMessageAsync(msg);
+                                                    msg = string.Empty;
+                                                }
                                                 msg += String.Format("**Player {0}**.  Ping: {1}.  Score: {2}.\n", x.netname, x.ping, x.score);
                                             }
                                             break;
@@ -1118,6 +1125,11 @@ namespace DK_UDP_Bot
                                         {
                                             foreach (var x in server.hwPlayers)
                                             {
+                                                if (msg.Length >= 1500)
+                                                {
+                                                    await message.Author.SendMessageAsync(msg);
+                                                    msg = string.Empty;
+                                                }
                                                 msg += String.Format("**Player {0}**.  Ping: {1}.  Score: {2}.\n", x.name, x.ping, x.frags);
                                             }
                                             break;
@@ -1126,6 +1138,11 @@ namespace DK_UDP_Bot
                                         {
                                             foreach (var x in server.dkPlayers)
                                             {
+                                                if (msg.Length >= 1500)
+                                                {
+                                                    await message.Author.SendMessageAsync(msg);
+                                                    msg = string.Empty;
+                                                }
                                                 msg += String.Format("**Player {0}**.  Ping: {1}.  Score: {2}.\n", x.netname, x.ping, x.score);
                                             }
                                             break;
@@ -1134,6 +1151,11 @@ namespace DK_UDP_Bot
                                         {
                                             foreach (var x in server.hwPlayers)
                                             {
+                                                if (msg.Length >= 1500)
+                                                {
+                                                    await message.Author.SendMessageAsync(msg);
+                                                    msg = string.Empty;
+                                                }
                                                 msg += String.Format("**Player {0}**.  Score: {1}.\n", x.name, x.frags);
                                             }
                                             break;
@@ -1146,6 +1168,11 @@ namespace DK_UDP_Bot
 
                                 if (!string.IsNullOrWhiteSpace(msg))
                                 {
+                                    if (msg.Length >= 1500)
+                                    {
+                                        await message.Author.SendMessageAsync(msg);
+                                        msg = string.Empty;
+                                    }
                                     msg += string.Format("\nNOTE: stats are delayed by {0} seconds.\n", querySleep);
                                     await message.Author.SendMessageAsync(msg);
                                     bSent = true;
@@ -1174,6 +1201,11 @@ namespace DK_UDP_Bot
                 {
                     try
                     {
+                        if (msg.Length >= 1500)
+                        {
+                            await message.Author.SendMessageAsync(msg);
+                            msg = string.Empty;
+                        }
                         msg += string.Format("{0} server \"{1}\" at {2}:{3} with {4} active players.\n",
                         x.serverType.ToString(),
                         x.serverParams["hostname"],
@@ -1202,6 +1234,11 @@ namespace DK_UDP_Bot
                     {
                         try
                         {
+                            if (msg.Length >= 1500)
+                            {
+                                await message.Author.SendMessageAsync(msg);
+                                msg = string.Empty;
+                            }
                             msg += string.Format("{0} server \"{1}\" at {2}:{3} with {4} active players.\n",
                             x.serverType.ToString(),
                             x.serverParams["hostname"],
