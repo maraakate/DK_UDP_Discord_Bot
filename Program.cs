@@ -22,10 +22,16 @@ namespace DK_UDP_Bot
         readonly byte[] hwMsQuery = { (byte)'\xff', (byte)'c', (byte)'\n' };
         readonly byte[] dkMsResponse = { (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'s', (byte)'e', (byte)'r', (byte)'v', (byte)'e', (byte)'r', (byte)'s', (byte)' ' };
         readonly byte[] hwMsResponse = { (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'d', (byte)'\n' };
+
         readonly byte[] dkServerQuery = { (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'s', (byte)'t', (byte)'a', (byte)'t', (byte)'u', (byte)'s', 0 };
         readonly byte[] hwServerQuery = { (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'s', (byte)'t', (byte)'a', (byte)'t', (byte)'u', (byte)'s', 0 };
+        readonly byte[] hexen2ServerQuery = { (byte)'\x80', (byte)'\x00', (byte)'\x00', (byte)'\x0D', (byte)'\x02', (byte)'H', (byte)'E', (byte)'X', (byte)'E', (byte)'N', (byte)'I', (byte)'I', 0 };
+
         readonly byte[] dkServerRespone = { (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'p', (byte)'r', (byte)'i', (byte)'n', (byte)'t', (byte)'\n' };
         readonly byte[] hwServerRespone = { (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'n' };
+        readonly byte[] hexen2ServerRespone = { (byte)'\x80', (byte)'\x00', (byte)'\x00', (byte)'\x33', (byte)'\x83' };
+
+        readonly byte[] hexen2ServerRulesQuery = { (byte)'\x80', (byte)'\x00', (byte)'\x00', (byte)'\x06', (byte)'\x04', 0 };
 
         ushort msUDPPort = 27900;
         ushort msTCPPort = 28900;
@@ -121,9 +127,87 @@ namespace DK_UDP_Bot
             }
         }
 
+        private void SendHexen2TCPMs()
+        {
+            if (!scanHexen2Servers)
+            {
+                return;
+            }
+
+            using (TcpClient c = new TcpClient(msAddr, msTCPPort))
+            {
+                int len = 0;
+                byte[] datarecv = new byte[4096];
+                len = c.Client.Receive(datarecv);
+                if (len > 0)
+                {
+                    string dataconv = Encoding.ASCII.GetString(datarecv).Substring(0, len);
+                    string seckey = dataconv.Substring(15);
+                    byte[] seckeyByte = new byte[4096];
+                    seckeyByte = Encoding.ASCII.GetBytes(seckey);
+                    gsmalg gsm = new gsmalg();
+                    byte[] secKeyOutByte = gsm.gsseckey(null, seckeyByte, Encoding.ASCII.GetBytes("FAKEKEY"));
+                    string secKeyOutStr = Encoding.ASCII.GetString(secKeyOutByte).Substring(0, 8);
+                    string incomingTcpValidate = string.Format(@"\gamename\hexen2\validate\{0}\final\\queryid\1.1\\list\cmp\gamename\hexen2\", secKeyOutStr);
+                    c.Client.Send(Encoding.ASCII.GetBytes(incomingTcpValidate));
+                    len = c.Client.Receive(datarecv);
+                    if (len > 0)
+                    {
+                        int ipLen = 4;
+                        int portLen = 2;
+                        int readBytes = 0;
+                        string str = Encoding.ASCII.GetString(datarecv).Substring(0, len);
+                        if (str.EndsWith("\\final\\"))
+                        {
+                            len -= 7;
+                        }
+
+                        while (true)
+                        {
+                            if (readBytes >= len)
+                                break;
+
+                            byte[] temp = new byte[4];
+                            Array.Copy(datarecv, readBytes, temp, 0, temp.Length);
+
+                            ushort port = BitConverter.ToUInt16(datarecv, readBytes + ipLen);
+                            ushort portx = (ushort)IPAddress.HostToNetworkOrder((short)port);
+
+                            IPAddress ip = new IPAddress(temp);
+                            string destAddress = ip.ToString();
+
+                            bool bAdd = true;
+                            foreach (dkserver server in servers)
+                            {
+                                if (server.ip == destAddress && server.port == portx)
+                                {
+                                    bAdd = false;
+                                    break;
+                                }
+                            }
+
+                            if (bAdd)
+                                servers.Add(new dkserver(destAddress, portx, serverType.Hexen2));
+
+                            readBytes += ipLen + portLen;
+                        }
+                    }
+                    else
+                    {
+                        Console.Write("No list response received from master server while querying for Heretic II.\n");
+                    }
+                }
+                else
+                {
+                    Console.Write("No challenge received from master server while querying for Heretic II.\n");
+                }
+            }
+        }
+
         #endregion
 
         #region "Send UDP request to Master Server"
+
         private void SendDaikatanaKUDPMs(ushort srcPort)
         {
             if (!scanDaikatanaServers)
@@ -259,7 +343,7 @@ namespace DK_UDP_Bot
                 byte[] datarecv;
                 string dataconv;
 
-                c.Client.ReceiveTimeout = 1200;
+                c.Client.ReceiveTimeout = serverPingTimeout;
 
                 IPEndPoint RemoteIpEndPoint = new IPEndPoint(IPAddress.Any, dstPort);
 
@@ -410,7 +494,7 @@ namespace DK_UDP_Bot
                 byte[] datarecv;
                 string dataconv;
 
-                c.Client.ReceiveTimeout = 1200;
+                c.Client.ReceiveTimeout = serverPingTimeout;
 
                 IPEndPoint RemoteIpEndPoint = new IPEndPoint(IPAddress.Any, dstPort);
 
@@ -551,12 +635,17 @@ namespace DK_UDP_Bot
 
         private void SendHexenWorldUDPServerStatus(ref dkserver server, ushort srcPort, string dstIp, ushort dstPort)
         {
+            if (!scanHexenWorldServers)
+            {
+                return;
+            }
+
             using (UdpClient c = new UdpClient(srcPort))
             {
                 byte[] datarecv;
                 string dataconv;
 
-                c.Client.ReceiveTimeout = 1200;
+                c.Client.ReceiveTimeout = serverPingTimeout;
 
                 IPEndPoint RemoteIpEndPoint = new IPEndPoint(IPAddress.Any, dstPort);
 
@@ -711,6 +800,229 @@ namespace DK_UDP_Bot
             }
         }
 
+        private void SendHexen2UDPServerStatus(ref dkserver server, ushort srcPort, string dstIp, ushort dstPort)
+        {
+            if (!scanHexen2Servers)
+            {
+                return;
+            }
+
+            using (UdpClient c = new UdpClient(srcPort))
+            {
+                byte[] datarecv;
+                string dataconv;
+
+                c.Client.ReceiveTimeout = serverPingTimeout;
+
+                IPEndPoint RemoteIpEndPoint = new IPEndPoint(IPAddress.Any, dstPort);
+
+                c.Send(hexen2ServerQuery, hexen2ServerQuery.Length, dstIp, dstPort);
+                datarecv = c.Receive(ref RemoteIpEndPoint);
+                if (!MemCmp(datarecv, hexen2ServerRespone, hexen2ServerRespone.Length))
+                {
+                    return;
+                }
+
+                dataconv = Encoding.ASCII.GetString(datarecv).Substring(hexen2ServerRespone.Length);
+
+                Dictionary<string, string> _serverParams = new Dictionary<string, string>();
+                var dict = dataconv.Split(new[] { '\0' }, StringSplitOptions.None);
+
+                _serverParams["hostname"] = dict[1];
+                _serverParams["gamemamp"] = dict[2];
+                if (string.IsNullOrWhiteSpace(dict[3]))
+                {
+                    byte[] remaining = Encoding.ASCII.GetBytes(dict[4]);
+                    //server.activeplayers = 0; /* FS: Don't modify it here because we scan cache player changes below. */
+                    _serverParams["maxplayers"] = remaining[0].ToString();
+                    _serverParams["protocol"] = remaining[1].ToString();
+                }
+                else
+                {
+                    byte[] remaining = Encoding.ASCII.GetBytes(dict[3]);
+                    //server.activeplayers = remaining[0]; /* FS: Don't modify it here because we scan cache player changes below. */
+                    _serverParams["maxplayers"] = remaining[1].ToString();
+                    _serverParams["protocol"] = remaining[2].ToString();
+                }
+
+                int phase = 0;
+                byte[] header = { (byte)'\x80', (byte)'\x00', (byte)'\x00', (byte)'\x06', (byte)'\x04', 0 };
+                byte[] buffer = new byte[4096];
+                int buffLen = 0;
+
+                System.Buffer.BlockCopy(header, 0, buffer, 0, header.Length);
+                buffLen = header.Length;
+
+                while (true)
+                {
+                    try
+                    {
+                        if (phase == 0)
+                        {
+                            c.Send(hexen2ServerRulesQuery, hexen2ServerRulesQuery.Length, dstIp, dstPort);
+                        }
+                        else
+                        {
+                            c.Send(buffer, buffLen, dstIp, dstPort);
+                        }
+                        datarecv = c.Receive(ref RemoteIpEndPoint);
+                        if (datarecv[0] == '\x80' && datarecv[1] == '\x00' && datarecv[2] == '\x00' && datarecv[4] == '\x85')
+                        {
+                            int end = 0;
+
+                            dataconv = Encoding.ASCII.GetString(datarecv);
+                            dataconv = dataconv.Substring(5);
+
+                            string[] kvp = dataconv.Split('\0');
+                            if (!string.IsNullOrWhiteSpace(kvp[0]))
+                            {
+                                _serverParams.Add(kvp[0], kvp[1]);
+                                System.Buffer.BlockCopy(Encoding.ASCII.GetBytes(kvp[0]), 0, buffer, 5, kvp[0].Length);
+                                end = header.Length + kvp[0].Length;
+                                buffLen = end;
+                                buffer[3] = (byte)end;
+                                buffer[end - 1] = 0;
+                            }
+                            else
+                            {
+                                break; /* FS: Reached the end. */
+                            }
+                        }
+
+                        phase++;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Write("Exception when reading CCREQ_RULE_INFO for Hexen 2.  Reason: {0}.\n", ex.Message);
+                        break;
+                    }
+                }
+
+                server.serverParams = _serverParams;
+
+                header[3] = (byte)'\x06';
+                header[4] = (byte)'\x03';
+
+                phase = 0;
+                int _playerCount = 0;
+                List<hwplayer> _players = new List<hwplayer>();
+                while (true)
+                {
+                    try
+                    {
+                        c.Send(header, header.Length, dstIp, dstPort);
+                        datarecv = c.Receive(ref RemoteIpEndPoint);
+                        if (datarecv[0] == '\x80' && datarecv[1] == '\x00' && datarecv[2] == '\x00' && datarecv[4] == '\x84')
+                        {
+                            hwplayer player = new hwplayer();
+                            string[] temp;
+                            int offset = 0;
+
+                            //MSG_WriteLong(&net_message, 0);
+                            //MSG_WriteByte(&net_message, CCREP_PLAYER_INFO);
+                            //MSG_WriteByte(&net_message, playerNumber);
+                            //MSG_WriteString(&net_message, client->name);
+                            //MSG_WriteLong(&net_message, client->colors);
+                            //MSG_WriteLong(&net_message, (int)client->edict->v.frags);
+                            //MSG_WriteLong(&net_message, (int)(net_time - client->netconnection->connecttime));
+                            //MSG_WriteString(&net_message, client->netconnection->address);
+
+                            int colors = 0;
+                            offset = header.Length - 1;
+                            player.userid = datarecv[offset];
+                            offset++;
+                            dataconv = Encoding.ASCII.GetString(datarecv);
+                            dataconv = dataconv.Substring(offset);
+                            temp = dataconv.Split('\0');
+                            player.name = temp[0];
+                            offset += temp[0].Length + 1;
+                            colors = BitConverter.ToInt32(new byte[] { datarecv[offset], datarecv[offset + 1], datarecv[offset + 2], datarecv[offset + 3] });
+                            player.top = (hwSkinColour)(colors >> 4);
+                            player.bottom = (hwSkinColour)(colors & 0x0F);
+                            offset += 4;
+                            player.frags = BitConverter.ToInt32(new byte[] { datarecv[offset], datarecv[offset + 1], datarecv[offset + 2], datarecv[offset + 3] });
+                            offset += 4;
+                            player.connectTime = new TimeSpan(0, 0, BitConverter.ToInt32(new byte[] { datarecv[offset], datarecv[offset + 1], datarecv[offset + 2], datarecv[offset + 3] }));
+                            offset += 4;
+                            //dataconv = Encoding.ASCII.GetString(datarecv).Substring(offset); /* FS: IP address. */
+
+                            _playerCount++;
+
+                            _players.Add(player);
+                            header[5] = (byte)(player.userid + 1);
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+                    catch
+                    {
+                        break;
+                    }
+                }
+
+                try
+                {
+                    int playersSize = server.hwPlayers.Count;
+                    int _playersSize = _players.Count;
+
+                    for (int i = 0; i < _playersSize; i++)
+                    {
+                        bool bFound = false;
+
+                        for (int j = 0; j < playersSize; j++)
+                        {
+                            if (_players[i].name.Equals(server.hwPlayers[j].name))
+                            {
+                                bFound = true;
+                                break;
+                            }
+                        }
+
+                        if ((bFound == false)
+                            && (string.Equals(_players[i].name, "\"WallFly[BZZZ]\"", StringComparison.OrdinalIgnoreCase) == false))
+                        {
+                            /* FS: Only alert if it's not the WallFly[BZZZ] bot. */
+                            try
+                            {
+                                string str = String.Format("Player {0} joined the Hexen 2 server \"{1}\" at {2}:{3}!  Total Players: {4}.\n", _players[i].name, server.serverParams["hostname"], dstIp, dstPort, _playerCount);
+                                var chnl = _client.GetChannel(DiscordChannelId) as IMessageChannel;
+                                chnl.SendMessageAsync(str);
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.Write("Failed to send player joined message from Hexen 2 server {0}:{1}.  Reason: {2}.\n", dstIp, dstPort, ex.Message);
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.Write("Failed to parse player data from Hexen 2 server {0}:{1}.  Reason: {2}.\n", dstIp, dstPort, ex.Message);
+                }
+
+                if (server.activeplayers > 0 && _playerCount <= 0)
+                {
+                    try
+                    {
+                        string str = String.Format("Hexen 2 server \"{0}\" at {1}:{2} is now empty.\n", server.serverParams["hostname"], dstIp, dstPort);
+                        var chnl = _client.GetChannel(DiscordChannelId) as IMessageChannel;
+                        chnl.SendMessageAsync(str);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Write("Failed to send server now empty message from Hexen 2 server {0}:{1}.  Reason: {2}.\n", dstIp, dstPort, ex.Message);
+                    }
+                }
+
+                server.activeplayers = _playerCount;
+                server.hwPlayers = _players;
+
+                server.heartbeat = DateTime.UtcNow;
+            }
+        }
+
         #endregion
 
         #region "Discord Async Functions"
@@ -815,6 +1127,14 @@ namespace DK_UDP_Bot
                                             foreach (var x in server.dkPlayers)
                                             {
                                                 msg += String.Format("**Player {0}**.  Ping: {1}.  Score: {2}.\n", x.netname, x.ping, x.score);
+                                            }
+                                            break;
+                                        }
+                                    case serverType.Hexen2:
+                                        {
+                                            foreach (var x in server.hwPlayers)
+                                            {
+                                                msg += String.Format("**Player {0}**.  Score: {1}.\n", x.name, x.frags);
                                             }
                                             break;
                                         }
@@ -1185,6 +1505,7 @@ namespace DK_UDP_Bot
                     SendDaikatanaKUDPMs(utilityQueryPort);
                     SendHexenWorldUDPMs(utilityQueryPort);
                     SendHeretic2TCPMs();
+                    SendHexen2TCPMs();
                 }
                 catch (Exception ex)
                 {
@@ -1208,6 +1529,9 @@ namespace DK_UDP_Bot
                                 break;
                             case serverType.HexenWorld:
                                 SendHexenWorldUDPServerStatus(ref server, utilityQueryPort, server.ip, server.port);
+                                break;
+                            case serverType.Hexen2:
+                                SendHexen2UDPServerStatus(ref server, utilityQueryPort, server.ip, server.port);
                                 break;
                             default:
                                 break;
