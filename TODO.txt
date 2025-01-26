@@ -6,6 +6,4 @@
 - Add QuakeWorld support.
 - Add support for multiple master servers.
 - Ability to rotate through "Playing" game status.
-- IP banlist for servers that report to the master server but keep timing out/causing trouble.
 - Sanity check some inputs.
-- Run through SCA.

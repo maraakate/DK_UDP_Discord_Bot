@@ -108,6 +108,15 @@ namespace DK_UDP_Bot
                                 }
                             }
 
+                            foreach (BanList banned in bannedIPs)
+                            {
+                                if (destAddress == banned.ip && portx == banned.port)
+                                {
+                                    bAdd = false;
+                                    break;
+                                }
+                            }
+
                             if (bAdd)
                                 servers.Add(new dkserver(destAddress, portx, serverType.Heretic2));
 
@@ -178,6 +187,15 @@ namespace DK_UDP_Bot
                             foreach (dkserver server in servers)
                             {
                                 if (server.ip == destAddress && server.port == portx)
+                                {
+                                    bAdd = false;
+                                    break;
+                                }
+                            }
+
+                            foreach (BanList banned in bannedIPs)
+                            {
+                                if (destAddress == banned.ip && portx == banned.port)
                                 {
                                     bAdd = false;
                                     break;
@@ -258,6 +276,15 @@ namespace DK_UDP_Bot
                         }
                     }
 
+                    foreach (BanList banned in bannedIPs)
+                    {
+                        if (destAddress == banned.ip && portx == banned.port)
+                        {
+                            bAdd = false;
+                            break;
+                        }
+                    }
+
                     if (bAdd)
                         servers.Add(new dkserver(destAddress, portx, serverType.Daikatana));
 
@@ -311,6 +338,15 @@ namespace DK_UDP_Bot
                     foreach (dkserver server in servers)
                     {
                         if (server.ip == destAddress && server.port == portx)
+                        {
+                            bAdd = false;
+                            break;
+                        }
+                    }
+
+                    foreach (BanList banned in bannedIPs)
+                    {
+                        if (destAddress == banned.ip && portx == banned.port)
                         {
                             bAdd = false;
                             break;
@@ -1494,6 +1530,12 @@ namespace DK_UDP_Bot
                     throw new Exception("Failed to convert QuerySleep to int!");
                 }
             }
+
+            temp = ConfigurationManager.AppSettings["BanListFileName"];
+            if (!string.IsNullOrWhiteSpace(temp))
+            {
+                BanListFileName = temp;
+            }
         }
 
         #endregion
@@ -1525,6 +1567,7 @@ namespace DK_UDP_Bot
             SetConsoleCtrlHandler(_handler, true);
 
             ReadConfig();
+            Init_BanList();
 
             // Tokens should be considered secret data, and never hard-coded.
             await _client.LoginAsync(TokenType.Bot, DiscordLoginToken);
