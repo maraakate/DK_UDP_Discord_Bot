@@ -1,6 +1,5 @@
-﻿01/25/2025
+﻿01/26/2025
 
-- Add Hexen 2/"NetHexen" i.e. non-HexenWorld support.
 - Add SiN support.
 - Add Kingpin support.
 - Add Quake 1/"NetQuake" i.e. non-QuakeWorld support.
@@ -10,4 +9,3 @@
 - IP banlist for servers that report to the master server but keep timing out/causing trouble.
 - Sanity check some inputs.
 - Run through SCA.
-- Update nuget packages.
