@@ -29,7 +29,7 @@ namespace DK_UDP_Bot
 
         readonly byte[] dkServerRespone = { (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'p', (byte)'r', (byte)'i', (byte)'n', (byte)'t', (byte)'\n' };
         readonly byte[] hwServerRespone = { (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'\xff', (byte)'n' };
-        readonly byte[] hexen2ServerRespone = { (byte)'\x80', (byte)'\x00', (byte)'\x00', (byte)'\x33', (byte)'\x83' };
+        readonly byte[] hexen2ServerRespone = { (byte)'\x80', (byte)'\x00', (byte)'\x00', (byte)'\x99', (byte)'\x83' }; /* FS: NOTE: 4th bit is length. */
 
         readonly byte[] hexen2ServerRulesQuery = { (byte)'\x80', (byte)'\x00', (byte)'\x00', (byte)'\x06', (byte)'\x04', 0 };
 
@@ -210,12 +210,12 @@ namespace DK_UDP_Bot
                     }
                     else
                     {
-                        Console.Write("No list response received from master server while querying for Heretic II.\n");
+                        Console.Write("No list response received from master server while querying for Hexen II.\n");
                     }
                 }
                 else
                 {
-                    Console.Write("No challenge received from master server while querying for Heretic II.\n");
+                    Console.Write("No challenge received from master server while querying for Hexen II.\n");
                 }
             }
         }
@@ -852,7 +852,11 @@ namespace DK_UDP_Bot
 
                 c.Send(hexen2ServerQuery, hexen2ServerQuery.Length, dstIp, dstPort);
                 datarecv = c.Receive(ref RemoteIpEndPoint);
-                if (!MemCmp(datarecv, hexen2ServerRespone, hexen2ServerRespone.Length))
+                if ((datarecv[0] != (byte)hexen2ServerRespone[0])
+                    && (datarecv[1] != (byte)hexen2ServerRespone[1])
+                    && (datarecv[2] != (byte)hexen2ServerRespone[2])
+                    && (datarecv.Length != (byte)datarecv[3])
+                    && (datarecv[4] != (byte)hexen2ServerRespone[4]))
                 {
                     return;
                 }
