@@ -474,7 +474,7 @@ namespace DK_UDP_Bot
                             {
                                 try
                                 {
-                                    string str = String.Format("Player {0} joined the Daikatana server \"{1}\" at {2}:{3}!  Total Players: {4}.\n", _players[i].netname, server.serverParams["hostname"], dstIp, dstPort, _playerCount);
+                                    string str = String.Format("Player \"{0}\" joined the Daikatana server \"{1}\" at {2}:{3}!  Total Players: {4}.\n", _players[i].netname, server.serverParams["hostname"], dstIp, dstPort, _playerCount);
                                     var chnl = _client.GetChannel(DiscordChannelId) as IMessageChannel;
                                     chnl.SendMessageAsync(str);
                                 }
@@ -625,7 +625,7 @@ namespace DK_UDP_Bot
                             {
                                 try
                                 {
-                                    string str = String.Format("Player {0} joined the Heretic II server \"{1}\" at {2}:{3}!  Total Players: {4}.\n", _players[i].netname, server.serverParams["hostname"], dstIp, dstPort, _playerCount);
+                                    string str = String.Format("Player \"{0}\" joined the Heretic II server \"{1}\" at {2}:{3}!  Total Players: {4}.\n", _players[i].netname, server.serverParams["hostname"], dstIp, dstPort, _playerCount);
                                     var chnl = _client.GetChannel(DiscordChannelId) as IMessageChannel;
                                     chnl.SendMessageAsync(str);
                                 }
@@ -792,7 +792,7 @@ namespace DK_UDP_Bot
                                 /* FS: Only alert if it's not the WallFly[BZZZ] bot. */
                                 try
                                 {
-                                    string str = String.Format("Player {0} joined the HexenWorld server \"{1}\" at {2}:{3}!  Total Players: {4}.\n", _players[i].name, server.serverParams["hostname"], dstIp, dstPort, _playerCount);
+                                    string str = String.Format("Player \"{0}\" joined the HexenWorld server \"{1}\" at {2}:{3}!  Total Players: {4}.\n", _players[i].name, server.serverParams["hostname"], dstIp, dstPort, _playerCount);
                                     var chnl = _client.GetChannel(DiscordChannelId) as IMessageChannel;
                                     chnl.SendMessageAsync(str);
                                 }
@@ -1023,7 +1023,7 @@ namespace DK_UDP_Bot
                             /* FS: Only alert if it's not the WallFly[BZZZ] bot. */
                             try
                             {
-                                string str = String.Format("Player {0} joined the Hexen 2 server \"{1}\" at {2}:{3}!  Total Players: {4}.\n", _players[i].name, server.serverParams["hostname"], dstIp, dstPort, _playerCount);
+                                string str = String.Format("Player \"{0}\" joined the Hexen 2 server \"{1}\" at {2}:{3}!  Total Players: {4}.\n", _players[i].name, server.serverParams["hostname"], dstIp, dstPort, _playerCount);
                                 var chnl = _client.GetChannel(DiscordChannelId) as IMessageChannel;
                                 chnl.SendMessageAsync(str);
                             }
