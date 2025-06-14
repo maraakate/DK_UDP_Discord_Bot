@@ -4,6 +4,7 @@ using Discord.WebSocket;
 using System;
 using System.Collections.Generic;
 using System.Configuration;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -12,6 +13,22 @@ using System.Threading.Tasks;
 
 namespace DK_UDP_Bot
 {
+    class IUserEqualityComparer : IEqualityComparer<IUser>
+    {
+        public bool Equals(IUser? b1, IUser? b2)
+        {
+            if (ReferenceEquals(b1, b2))
+                return true;
+
+            if (b2 is null || b1 is null)
+                return false;
+
+            return b1.Id == b2.Id;
+        }
+
+        public int GetHashCode(IUser box) => box.GetHashCode();
+    }
+
     public partial class Program
     {
         readonly DiscordSocketClient _client;
@@ -1082,61 +1099,108 @@ namespace DK_UDP_Bot
             var chnl = _client.GetChannel(id) as IMessageChannel;
             chnl.SendMessageAsync(str);
 
-            FixRoles();
-
             return Task.CompletedTask;
         }
 
         private async void FixRoles()
         {
-            string temp = ConfigurationManager.AppSettings["DiscordGuildId"];
-            ulong guildId = 0;
-            if ((ulong.TryParse(temp, out guildId) == false) || (guildId == 0))
+            int sleeptime = 1;
+
+            while (true)
             {
-                return;
-            }
-
-            temp = ConfigurationManager.AppSettings["DiscordRoleId"];
-            ulong roleId = 0;
-            if ((ulong.TryParse(temp, out roleId) == false) || (roleId == 0))
-            {
-                return;
-            }
-
-            var chnl = _client.GetChannel(1060241702738206802) as IMessageChannel;
-            var message = chnl.GetMessageAsync(1060390605865365535);
-            var reactions = message.Result.Reactions;
-
-            var guild = _client.GetGuild(guildId);
-            await guild.DownloadUsersAsync();
-
-            foreach (var emote in reactions)
-            {
-                if (emote.Key.Name == "daikatana_mp")
+                string temp = ConfigurationManager.AppSettings["DiscordGuildId"];
+                ulong guildId = 0;
+                if ((ulong.TryParse(temp, out guildId) == false) || (guildId == 0))
                 {
-                    var users = message.Result.GetReactionUsersAsync(emote.Key, 100000).FlattenAsync().Result;
-                    foreach (var user in users)
+                    return;
+                }
+
+                temp = ConfigurationManager.AppSettings["DiscordRoleId"];
+                ulong roleId = 0;
+                if ((ulong.TryParse(temp, out roleId) == false) || (roleId == 0))
+                {
+                    return;
+                }
+
+                var chnl = _client.GetChannel(1060241702738206802) as IMessageChannel;
+                if (chnl == null)
+                {
+                    sleeptime = 1;
+                    continue;
+                }
+                var message = chnl.GetMessageAsync(1060390605865365535);
+                if (message == null)
+                {
+                    sleeptime = 1;
+                    continue;
+                }
+
+                Console.Write("Fixing Roles.\n");
+                sleeptime = 3600; /* FS: One hour. */
+
+                var reactions = message.Result.Reactions;
+
+                var guild = _client.GetGuild(guildId);
+                await guild.DownloadUsersAsync();
+
+                foreach (var emote in reactions)
+                {
+                    if (emote.Key.Name == "daikatana_mp")
                     {
-                        var guildUser = guild.GetUser(user.Id);
-                        if (guildUser != null)
+                        var users = message.Result.GetReactionUsersAsync(emote.Key, 100000).FlattenAsync().Result;
+                        foreach (var user in users)
                         {
-                            bool bFound = false;
-                            foreach (var role in guildUser.Roles)
+                            try
                             {
-                                if (role.Id == roleId)
+                                var guildUser = guild.GetUser(user.Id);
+                                if (guildUser != null)
                                 {
-                                    bFound = true;
-                                    break;
+                                    bool bFound = false;
+                                    foreach (var role in guildUser.Roles)
+                                    {
+                                        if (role.Id == roleId)
+                                        {
+                                            bFound = true;
+                                            break;
+                                        }
+                                    }
+                                    if (bFound == false)
+                                    {
+                                        Console.Write("Adding role to {0}.\n", guildUser.DisplayName);
+                                        await guildUser.AddRoleAsync(roleId);
+                                    }
                                 }
                             }
-                            if (bFound == false)
+                            catch (Exception ex)
                             {
-                                Console.Write("Adding role to {0}.\n", guildUser.DisplayName);
-                                await guildUser.AddRoleAsync(roleId);
+                                Console.Write("Failed to parsing roles from {0}.  Reason: {1}.\n", user.Username, ex.Message);
+                            }
+                        }
+
+                        var guildRole = guild.GetRole(roleId);
+                        IUserEqualityComparer comparator = new IUserEqualityComparer();
+
+                        foreach (var guildUser in guild.Users)
+                        {
+                            if (users.Contains(guildUser, comparator) == false)
+                            {
+                                if (guildUser.Roles.Contains(guildRole))
+                                {
+                                    try
+                                    {
+                                        Console.Write("Removing role from {0}.\n", guildUser.DisplayName);
+                                        await guildUser.RemoveRoleAsync(guildRole);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Console.Write("Failed to remove role {0} from {1}.  Reason: {2}.\n", guildRole.Name, guildUser.DisplayName, ex.Message);
+                                    }
+                                }
                             }
                         }
                     }
                 }
+                Thread.Sleep(1000 * sleeptime);
             }
         }
 
@@ -1636,6 +1700,9 @@ namespace DK_UDP_Bot
                 await _client.SetGameAsync(DiscordCurrentGame);
             }
 
+            Thread fixRolesThread = new Thread(FixRoles);
+            fixRolesThread.Start();
+
             // Block the program until it is closed.
             while (!exitSystem)
             {
@@ -1686,6 +1753,7 @@ namespace DK_UDP_Bot
                 CleanUpDeadServers();
                 Thread.Sleep(1000 * querySleep);
             }
+            fixRolesThread.Join();
         }
 
         #endregion
