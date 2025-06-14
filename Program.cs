@@ -1082,7 +1082,62 @@ namespace DK_UDP_Bot
             var chnl = _client.GetChannel(id) as IMessageChannel;
             chnl.SendMessageAsync(str);
 
+            FixRoles();
+
             return Task.CompletedTask;
+        }
+
+        private async void FixRoles()
+        {
+            string temp = ConfigurationManager.AppSettings["DiscordGuildId"];
+            ulong guildId = 0;
+            if ((ulong.TryParse(temp, out guildId) == false) || (guildId == 0))
+            {
+                return;
+            }
+
+            temp = ConfigurationManager.AppSettings["DiscordRoleId"];
+            ulong roleId = 0;
+            if ((ulong.TryParse(temp, out roleId) == false) || (roleId == 0))
+            {
+                return;
+            }
+
+            var chnl = _client.GetChannel(1060241702738206802) as IMessageChannel;
+            var message = chnl.GetMessageAsync(1060390605865365535);
+            var reactions = message.Result.Reactions;
+
+            var guild = _client.GetGuild(guildId);
+            await guild.DownloadUsersAsync();
+
+            foreach (var emote in reactions)
+            {
+                if (emote.Key.Name == "daikatana_mp")
+                {
+                    var users = message.Result.GetReactionUsersAsync(emote.Key, 100000).FlattenAsync().Result;
+                    foreach (var user in users)
+                    {
+                        var guildUser = guild.GetUser(user.Id);
+                        if (guildUser != null)
+                        {
+                            bool bFound = false;
+                            foreach (var role in guildUser.Roles)
+                            {
+                                if (role.Id == roleId)
+                                {
+                                    bFound = true;
+                                    break;
+                                }
+                            }
+                            if (bFound == false)
+                            {
+                                Console.Write("Adding role to {0}.\n", guildUser.DisplayName);
+                                await guildUser.AddRoleAsync(roleId);
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         private async Task MessageReceivedAsync(SocketMessage message)
@@ -1327,7 +1382,7 @@ namespace DK_UDP_Bot
                 return;
             }
 
-            if (string.Equals(emoteRecvdStr, "daikatana_mp") == false)
+            if (string.Equals(emoteRecvdStr, "daikatana_mp") == false || arg2.Id != 1060241702738206802 || arg3.MessageId != 1060390605865365535)
             {
                 return;
             }
@@ -1367,7 +1422,7 @@ namespace DK_UDP_Bot
                 return;
             }
 
-            if (string.Equals(emoteRecvdStr, "daikatana_mp") == false)
+            if (string.Equals(emoteRecvdStr, "daikatana_mp") == false || arg2.Id != 1060241702738206802 || arg3.MessageId != 1060390605865365535)
             {
                 return;
             }
@@ -1555,7 +1610,7 @@ namespace DK_UDP_Bot
             {
                 LogLevel = LogSeverity.Critical,
                 WebSocketProvider = WS4NetProvider.Instance,
-                GatewayIntents = GatewayIntents.AllUnprivileged | GatewayIntents.MessageContent
+                GatewayIntents = GatewayIntents.AllUnprivileged | GatewayIntents.MessageContent | GatewayIntents.GuildMembers
             });
 
             _client.Log += LogAsync;
